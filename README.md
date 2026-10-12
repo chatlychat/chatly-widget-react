@@ -81,7 +81,7 @@ Plus four of its own:
 
 | prop                  | type                                                          |
 | --------------------- | ------------------------------------------------------------- |
-| `loaderUrl`           | Where `loader.js` is served from. **Self-hosting: set this.** |
+| `loaderUrl`           | Where `loader.js` is served from. Rarely set; see below.      |
 | `locale`              | Calls `setLocale()` once the widget is up.                    |
 | `inline`              | Render the chat inside this component's own box.              |
 | `className` / `style` | Applied to the inline container.                              |
@@ -190,13 +190,16 @@ everything that touches `window` happens in an effect, which never runs on the
 server. There is no `'use client'` needed in Next.js App Router beyond the one
 your own component already has if it uses hooks.
 
-## Self-hosting
+## Serving the loader yourself
 
-Set `loaderUrl` to your deployment's. `GET /v1/channels/:id` returns the right
-value as `embed.loaderUrl` — read it from there rather than typing a host, and
-note that a running widget talks to **three** origins (widget host, API host,
-realtime host); the same endpoint reports all of them as `connectOrigins` for
-your CSP.
+Set `loaderUrl` if you serve `loader.js` off your own CDN, or to aim the
+component at another Chatly environment. `GET /v1/channels/:id` returns the
+right value as `embed.loaderUrl` — read it from there rather than typing a
+host, and note that the loader looks for the bundle beside whatever URL you
+give it, so `widget.js` and its chunks have to be served from the same path.
+The same endpoint reports the origins a running widget connects to as
+`connectOrigins` — the API host, and the realtime host under both `https:` and
+`wss:`, which a browser matches separately — for your CSP.
 
 ## License
 
