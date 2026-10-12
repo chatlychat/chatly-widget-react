@@ -3,7 +3,7 @@
   "version": "0.1.1",
   "description": "The Chatly chat widget as a React component — mount, unmount, identity and locale changes handled, StrictMode-safe.",
   "license": "MIT",
-  "homepage": "https://chatlychat.com/docs",
+  "homepage": "https://github.com/chatlychat/chatly-widget-react#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/chatlychat/chatly-widget-react.git"
@@ -13,13 +13,12 @@
   },
   "keywords": [
     "chatly",
-    "livechat",
     "chat",
     "widget",
     "react",
     "support"
   ],
-  "author": "LiveChat Platform Engineering",
+  "author": "Chatly",
   "type": "module",
   "main": "./dist/index.js",
   "module": "./dist/index.js",

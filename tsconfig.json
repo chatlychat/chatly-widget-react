@@ -47,10 +47,10 @@
     "src/**/*.tsx"
   ],
   "exclude": [
+    "**/*.spec.ts",
+    "**/*.spec.tsx",
+    "**/*.test.ts",
     "node_modules",
-    "dist",
-    "build",
-    ".next",
-    "coverage"
+    "dist"
   ]
 }
