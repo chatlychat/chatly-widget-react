@@ -79,12 +79,12 @@ Every [init option](https://chatlychat.com/docs/channel-web) is a prop:
 
 Plus four of its own:
 
-| prop                  | type                                                          |
-| --------------------- | ------------------------------------------------------------- |
-| `loaderUrl`           | Where `loader.js` is served from. Rarely set; see below.      |
-| `locale`              | Calls `setLocale()` once the widget is up.                    |
-| `inline`              | Render the chat inside this component's own box.              |
-| `className` / `style` | Applied to the inline container.                              |
+| prop                  | type                                                     |
+| --------------------- | -------------------------------------------------------- |
+| `loaderUrl`           | Where `loader.js` is served from. Rarely set; see below. |
+| `locale`              | Calls `setLocale()` once the widget is up.               |
+| `inline`              | Render the chat inside this component's own box.         |
+| `className` / `style` | Applied to the inline container.                         |
 
 And the events, as callbacks: `onReady`, `onOpen`, `onClose`, `onMessage`,
 `onConversation`, `onIdentified`, `onReset`, `onAction`, `onError`. Pass
