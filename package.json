@@ -1,0 +1,72 @@
+{
+  "name": "@chatlychat/widget-react",
+  "version": "0.1.1",
+  "description": "The Chatly chat widget as a React component — mount, unmount, identity and locale changes handled, StrictMode-safe.",
+  "license": "MIT",
+  "homepage": "https://chatlychat.com/docs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chatlychat/chatly-widget-react.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chatlychat/chatly-widget-react/issues"
+  },
+  "keywords": [
+    "chatly",
+    "livechat",
+    "chat",
+    "widget",
+    "react",
+    "support"
+  ],
+  "author": "LiveChat Platform Engineering",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "!dist/**/*.spec.*",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/",
+    "provenance": true
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@chatlychat/widget-element": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.0",
+    "jsdom": "^30.0.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.6.2",
+    "vitest": "^2.1.2"
+  }
+}
