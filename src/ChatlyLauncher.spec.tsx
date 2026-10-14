@@ -1,0 +1,334 @@
+/**
+ * `<ChatlyLauncher />`.
+ *
+ * The component has two modes and one thing it must never do. The modes are
+ * owner (there is a `publicId`, so it claims the widget with the bundle
+ * deferred) and control (there is not, so it only opens a widget somebody
+ * else mounted). The thing it must never do is end up with two widgets or two
+ * launchers on one page.
+ *
+ * Everything here talks to the loader's shim — a callable `window.Chatly`
+ * with a recording stand-in behind it — because that is the state a real page
+ * is in for the whole of lazy mode: the bundle has not arrived, and every
+ * call is a queued one.
+ */
+import { __testing } from '@chatlychat/widget-element';
+import { act, fireEvent, render } from '@testing-library/react';
+import { StrictMode, useState, type ReactElement } from 'react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { ChatlyLauncher } from './ChatlyLauncher.js';
+import { ChatlyWidget } from './ChatlyWidget.js';
+
+let calls: unknown[][] = [];
+
+interface ShimWindow {
+  Chatly?: ((...args: unknown[]) => void) & { q?: unknown[]; publicId?: string; lazy?: unknown };
+}
+
+const w = globalThis.window as unknown as ShimWindow;
+
+function argsFor(method: string): unknown[][] {
+  return calls.filter((c) => c[0] === method).map((c) => c.slice(1));
+}
+
+function initOptions(index = 0): Record<string, unknown> {
+  return (argsFor('init')[index]?.[0] ?? {}) as Record<string, unknown>;
+}
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  __testing.reset();
+  calls = [];
+  w.Chatly = Object.assign((...args: unknown[]) => {
+    calls.push(args);
+  }, {});
+});
+
+afterEach(() => {
+  __testing.reset();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+describe('what it renders', () => {
+  it('is a real button with a usable default label', () => {
+    const { container } = render(<ChatlyLauncher />);
+    const button = container.querySelector('button');
+    expect(button?.type).toBe('button');
+    expect(button?.textContent).toBe('Chat with us');
+  });
+
+  it('takes children, a className and a style, because the host owns the look', () => {
+    const { container } = render(
+      <ChatlyLauncher className="btn btn-primary" style={{ borderRadius: 8 }}>
+        <span>Need a hand?</span>
+      </ChatlyLauncher>,
+    );
+    const button = container.querySelector('button');
+    expect(button?.className).toBe('btn btn-primary');
+    expect(button?.textContent).toBe('Need a hand?');
+    expect(button?.style.borderRadius).toBe('8px');
+  });
+
+  it('labels an icon-only button, which has no text of its own', () => {
+    // CLAUDE.md §4: aria-labels on icon-only buttons. A `<button>` whose only
+    // child is an SVG announces nothing at all.
+    const { container } = render(
+      <ChatlyLauncher>
+        <svg />
+      </ChatlyLauncher>,
+    );
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBe('Open chat');
+  });
+
+  it('leaves a text button unlabelled, so a screen reader reads the text once', () => {
+    const { container } = render(<ChatlyLauncher label="Support" />);
+    expect(container.querySelector('button')?.getAttribute('aria-label')).toBeNull();
+  });
+});
+
+describe('control mode — no publicId', () => {
+  it('mounts nothing', () => {
+    render(<ChatlyLauncher />);
+    expect(argsFor('init')).toHaveLength(0);
+    expect(__testing.isMounted()).toBe(false);
+  });
+
+  it('claims nothing, so it cannot hold a widget up after its owner unmounts', () => {
+    // A claim is what keeps the widget alive. An extra one from a header
+    // button would stop the reference count ever reaching zero.
+    render(
+      <>
+        <ChatlyWidget publicId="acme-web" />
+        <ChatlyLauncher />
+      </>,
+    );
+    expect(__testing.claimCount()).toBe(1);
+  });
+
+  it('opens the widget somebody else mounted', () => {
+    const { container } = render(
+      <>
+        <ChatlyWidget publicId="acme-web" />
+        <ChatlyLauncher openTab="help" />
+      </>,
+    );
+    act(() => {
+      container.querySelector('button')?.click();
+    });
+    expect(argsFor('open')).toEqual([['help']]);
+  });
+});
+
+describe('owner mode — with a publicId', () => {
+  it('claims the widget with the bundle deferred', () => {
+    render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
+    // `manual`: the loader paints nothing and fetches nothing until asked.
+    expect(w.Chatly?.lazy).toBe('manual');
+    expect(__testing.claimCount()).toBe(1);
+  });
+
+  it("hides the widget's own launcher, so there is only one button", () => {
+    // Nothing in the lifecycle would catch this: the widget would render its
+    // floating bubble right next to the button the host just styled.
+    render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
+    expect(initOptions()['theme']).toEqual({ hideLauncher: true });
+  });
+
+  it('lets a host ask for both launchers anyway', () => {
+    render(
+      <ChatlyLauncher publicId="acme-web" theme={{ hideLauncher: false }}>
+        Chat
+      </ChatlyLauncher>,
+    );
+    expect(initOptions()['theme']).toEqual({ hideLauncher: false });
+  });
+
+  it('opens on click, through the same queue the snippet has always used', () => {
+    // Before the bundle lands this is a queued `open`, which the loader
+    // treats as a trigger: it fetches the bundle, replays the queue, and the
+    // panel opens. One path, both states.
+    const { container } = render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
+    act(() => {
+      container.querySelector('button')?.click();
+    });
+    expect(argsFor('open')).toEqual([[undefined]]);
+  });
+
+  /*
+   * `fireEvent.pointerOver`, not `pointerenter`.
+   *
+   * React synthesises `onPointerEnter` from the native `pointerover`/
+   * `pointerout` pair at the root container — it does not listen for
+   * `pointerenter` at all, because that event does not bubble and so cannot
+   * reach a delegated listener. Dispatching `pointerenter` directly runs
+   * nothing and reports a working prefetch as broken.
+   */
+  it('prefetches on hover, without opening anything', () => {
+    const { container } = render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
+    const button = container.querySelector('button');
+    if (button === null) {
+      throw new Error('no button rendered');
+    }
+    act(() => {
+      fireEvent.pointerOver(button);
+    });
+    expect(argsFor('load')).toHaveLength(1);
+    expect(argsFor('open')).toHaveLength(0);
+  });
+
+  it('prefetches on focus, so a keyboard visitor gets the same head start', () => {
+    const { container } = render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
+    const button = container.querySelector('button');
+    if (button === null) {
+      throw new Error('no button rendered');
+    }
+    act(() => {
+      fireEvent.focus(button);
+    });
+    expect(argsFor('load')).toHaveLength(1);
+  });
+
+  it('can have the hover prefetch turned off', () => {
+    const { container } = render(
+      <ChatlyLauncher publicId="acme-web" prefetchOnHover={false}>
+        Chat
+      </ChatlyLauncher>,
+    );
+    const button = container.querySelector('button');
+    if (button === null) {
+      throw new Error('no button rendered');
+    }
+    act(() => {
+      fireEvent.pointerOver(button);
+      fireEvent.focus(button);
+    });
+    expect(argsFor('load')).toHaveLength(0);
+  });
+
+  it('honours an onClick that prevents the default', () => {
+    const { container } = render(
+      <ChatlyLauncher publicId="acme-web" onClick={(e) => e.preventDefault()}>
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => {
+      container.querySelector('button')?.click();
+    });
+    expect(argsFor('open')).toHaveLength(0);
+  });
+
+  it('initialises once in StrictMode, not twice', () => {
+    render(
+      <StrictMode>
+        <ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>
+      </StrictMode>,
+    );
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(argsFor('init')).toHaveLength(1);
+    expect(__testing.isMounted()).toBe(true);
+  });
+
+  it('releases its claim on unmount', () => {
+    const { unmount } = render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
+    unmount();
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(__testing.isMounted()).toBe(false);
+  });
+
+  it('claims once when the publicId arrives on a later render', () => {
+    // A page that fetches its channel id, or reads it from a provider that
+    // resolves on the second render. A mount-only effect would leave this
+    // launcher permanently in control mode, warning "no widget is mounted" on
+    // every click.
+    function Late(): ReactElement {
+      const [id, setId] = useState<string | undefined>(undefined);
+      return (
+        <>
+          <button type="button" data-testid="resolve" onClick={() => setId('acme-web')} />
+          <ChatlyLauncher publicId={id}>Chat</ChatlyLauncher>
+        </>
+      );
+    }
+    const { container } = render(<Late />);
+    expect(argsFor('init')).toHaveLength(0);
+    act(() => {
+      container
+        .querySelector('[data-testid="resolve"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(argsFor('init')).toHaveLength(1);
+    expect(__testing.claimCount()).toBe(1);
+  });
+
+  it('re-offers props without re-initialising for a fresh object literal', () => {
+    // The bug every hand-written integration has: a parent re-render with a
+    // new `theme={{…}}` closes the visitor's open panel.
+    function Parent(): ReactElement {
+      const [, bump] = useState(0);
+      return (
+        <>
+          <button type="button" data-testid="bump" onClick={() => bump((n) => n + 1)} />
+          <ChatlyLauncher publicId="acme-web" theme={{ primaryColor: '#111111' }}>
+            Chat
+          </ChatlyLauncher>
+        </>
+      );
+    }
+    const { container } = render(<Parent />);
+    act(() => {
+      container
+        .querySelector('[data-testid="bump"]')
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(argsFor('init')).toHaveLength(1);
+  });
+});
+
+describe('both components on one page', () => {
+  it('is one widget and one claim each, not two widgets', () => {
+    // The lifecycle is reference-counted by claim identity, so this is a
+    // single `init` with two claimants.
+    render(
+      <>
+        <ChatlyWidget publicId="acme-web" />
+        <ChatlyLauncher publicId="acme-web" />
+      </>,
+    );
+    expect(argsFor('init')).toHaveLength(1);
+    expect(__testing.claimCount()).toBe(2);
+  });
+
+  it('survives either one unmounting', () => {
+    function Page({ widget }: { widget: boolean }): ReactElement {
+      return (
+        <>
+          {widget ? <ChatlyWidget publicId="acme-web" /> : null}
+          <ChatlyLauncher publicId="acme-web" />
+        </>
+      );
+    }
+    const { rerender } = render(<Page widget />);
+    rerender(<Page widget={false} />);
+    act(() => {
+      vi.advanceTimersByTime(50);
+    });
+    expect(__testing.isMounted()).toBe(true);
+  });
+
+  it('warns when the two ask for different things, instead of picking one in silence', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    render(
+      <>
+        <ChatlyWidget publicId="acme-web" theme={{ primaryColor: '#111111' }} />
+        <ChatlyLauncher publicId="acme-web" theme={{ primaryColor: '#222222' }} />
+      </>,
+    );
+    expect(warn.mock.calls.flat().join(' ')).toContain('FIRST mount owns the configuration');
+  });
+});

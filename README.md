@@ -171,6 +171,85 @@ so an inline arrow does not re-subscribe on every render.
 the last one — which is what makes this usable from a component that mounts
 long after the page did.
 
+## `<ChatlyLauncher />` — your button, the bundle loaded on demand
+
+```tsx
+import { ChatlyLauncher } from '@chatlychat/widget-react';
+
+// Owner: nothing else mounts the widget, and `widget.js` (~44KB gzipped) is
+// not fetched until somebody uses this button.
+<ChatlyLauncher publicId="acme-web" className="btn btn-primary">
+  Chat with us
+</ChatlyLauncher>;
+
+// Control: a page that already renders <ChatlyWidget />. Claims nothing;
+// clicking it is `useChatly().open()`.
+<ChatlyLauncher openTab="help">Help</ChatlyLauncher>;
+```
+
+Whether it owns the widget is decided by one thing: a `publicId`. With one it
+claims the widget with `lazy: 'manual'`, so the loader (~2KB) is fetched and
+the bundle is not; the first click downloads the bundle and opens the panel.
+Hovering or focusing the button starts that download early, so the click
+usually finds it cached — pass `prefetchOnHover={false}` to make the fetch
+strictly click-triggered.
+
+It renders a bare `<button>` with your children in it, and that is
+deliberate: this package ships no stylesheet, so the alternative was inline
+styles that fight your design system. If you want the styled floating
+launcher, that is `<ChatlyWidget />`.
+
+In owner mode it also sets `theme.hideLauncher`, so you do not get your button
+_and_ the widget's own bubble. Pass `theme={{ hideLauncher: false }}` if you
+want both. One caveat if you render `<ChatlyWidget />` as well: the first
+mount owns the configuration, so put `hideLauncher` there instead.
+
+### `lazy` on `<ChatlyWidget />`
+
+The same option works on `<ChatlyWidget />` and on `<chatly-widget>`, with
+the widget's own launcher kept:
+
+| value                 | what happens                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `false` (default)     | the bundle is fetched on page load, as it always has been                                                  |
+| `true` / `'launcher'` | the loader paints a stand-in launcher matching your theme; using it fetches the bundle and opens the panel |
+| `'interaction'`       | as above, plus a pre-warm on the visitor's first interaction with the page                                 |
+| `'manual'`            | nothing is painted or fetched until something calls `Chatly('load')`                                       |
+
+Two things to know before turning it on. A `track()` call made in lazy mode
+waits in the queue until the bundle loads, so a visitor who leaves the page
+first loses the event. And `lazy` is read once, when `loader.js` evaluates —
+changing it in props afterwards warns rather than taking effect, because by
+then the question has been answered.
+
+With `inline`, where there is no launcher at all, the trigger is the
+container approaching the viewport instead.
+
+## Verifying identity: `@chatlychat/widget-react/server`
+
+```ts
+// A server component, a route handler, a `getServerSideProps` — anywhere
+// that is not the browser.
+import { chatlyUserHash } from '@chatlychat/widget-react/server';
+
+const userHash = chatlyUserHash(process.env.CHATLY_IDV_SECRET!, user.id);
+```
+
+Then pass the hash — and only the hash — to the client as
+`visitor={{ externalId: user.id, userHash }}`.
+
+**The secret must never reach a browser.** Anything that can compute this
+hash can impersonate any of your users to the widget, so a secret in your
+bundle makes identity verification worse than useless: the dashboard still
+reports it as on, the API accepts every hash, and one attacker with devtools
+open reads every customer's support history.
+
+That is why this is a separate entry point rather than a root export, why the
+package's `exports` map points it at a throwing stub under the `browser`
+condition, and why the function refuses to run if it finds a `window` or a
+`document`. It is the same digest as `chatlyIdentityHash` in
+`@chatlychat/sdk-node`; if your backend already uses that, keep using it.
+
 ## One widget per page
 
 `window.Chatly` is a singleton, so there is one widget per page whatever you
@@ -185,10 +264,16 @@ makes a `<ChatlyWidget />` inside a layout that remounts on navigation safe.
 
 ## Server-side rendering
 
-Safe. The component renders `null` (or an empty `<div>` when `inline`), and
-everything that touches `window` happens in an effect, which never runs on the
-server. There is no `'use client'` needed in Next.js App Router beyond the one
-your own component already has if it uses hooks.
+Safe. `<ChatlyWidget />` renders `null` (or an empty `<div>` when `inline`),
+`<ChatlyLauncher />` renders a `<button>`, and everything that touches
+`window` happens in an effect or an event handler — neither of which runs on
+the server. There is no `'use client'` needed in Next.js App Router beyond the
+one your own component already has if it uses hooks.
+
+`src/ChatlyLauncher.ssr.spec.tsx` renders both components with
+`react-dom/server` in a Node environment where `window` and `document` are
+genuinely undefined, because a jsdom test has a `window` and would pass either
+way.
 
 ## Serving the loader yourself
 

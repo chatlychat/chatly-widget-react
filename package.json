@@ -1,6 +1,6 @@
 {
   "name": "@chatlychat/widget-react",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "The Chatly chat widget as a React component — mount, unmount, identity and locale changes handled, StrictMode-safe.",
   "license": "MIT",
   "homepage": "https://github.com/chatlychat/chatly-widget-react#readme",
@@ -28,6 +28,13 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
       "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "browser": "./dist/server-browser.js",
+      "node": "./dist/server.js",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
     }
   },
   "files": [
@@ -45,14 +52,13 @@
   },
   "publishConfig": {
     "access": "public",
-    "registry": "https://registry.npmjs.org/",
-    "provenance": true
+    "registry": "https://registry.npmjs.org/"
   },
   "engines": {
     "node": ">=18"
   },
   "dependencies": {
-    "@chatlychat/widget-element": "^0.1.0"
+    "@chatlychat/widget-element": "^0.2.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"
