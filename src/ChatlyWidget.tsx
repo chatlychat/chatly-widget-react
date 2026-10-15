@@ -133,7 +133,7 @@ export function ChatlyWidget(props: ChatlyWidgetProps): ReactElement | null {
 
   const forwarders = useRef<ChatlyEmbedHandlers>({
     onReady: (session) => latest.current.onReady?.(session),
-    onOpen: () => latest.current.onOpen?.(),
+    onOpen: (detail) => latest.current.onOpen?.(detail),
     onClose: () => latest.current.onClose?.(),
     onMessage: (message) => latest.current.onMessage?.(message),
     onConversation: (detail) => latest.current.onConversation?.(detail),
