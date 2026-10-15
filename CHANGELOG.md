@@ -1,6 +1,6 @@
 # @chatlychat/widget-react — changelog
 
-## Unreleased
+## 0.3.0 — 2026-10-15
 
 - `nonce` on `<ChatlyWidget />` and `<ChatlyLauncher />`: the page's CSP
   nonce, for an app served `script-src 'nonce-…'` with no `'unsafe-inline'`.
