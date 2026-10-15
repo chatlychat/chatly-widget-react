@@ -1,5 +1,23 @@
 # @chatlychat/widget-react — changelog
 
+## Unreleased
+
+- `nonce` on `<ChatlyWidget />` and `<ChatlyLauncher />`: the page's CSP
+  nonce, for an app served `script-src 'nonce-…'` with no `'unsafe-inline'`.
+  Passed to the embed lifecycle, which stamps the `loader.js` script and
+  publishes the value on the loader shim. Optional; absent-by-default
+  behaviour is unchanged. Not sufficient on its own — see the note in
+  `@chatlychat/widget-element`'s changelog about the other two injection
+  points.
+- README fix: the `UnreadBadge` example counted `message` events, which fire
+  only when the VISITOR sends something — an agent's reply does not fire one,
+  so the example never counted a reply. Replaced with
+  `@chatlychat/sdk-js`'s `unreadCount()`, plus the caveat that decides whether
+  the number is right: the headless client keeps its own visitor session, so
+  it has to be `identify()`-ed with the same identity as the widget, and an
+  anonymous visitor's two sessions are two different contacts. There is no
+  `unread` event to subscribe to today.
+
 ## 0.2.0 — 2026-10-14
 
 - `<ChatlyLauncher />`: render your own button and boot the widget on demand.

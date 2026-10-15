@@ -77,12 +77,13 @@ Every [init option](https://chatlychat.com/docs/channel-web) is a prop:
 `publicId` (required), `apiUrl`, `realtimeUrl`, `visitor`, `theme`,
 `behavior`, `quickLinks`, `copy`, `copyByLocale`, `cssOverrides`.
 
-Plus four of its own:
+Plus five of its own:
 
 | prop                  | type                                                     |
 | --------------------- | -------------------------------------------------------- |
 | `loaderUrl`           | Where `loader.js` is served from. Rarely set; see below. |
 | `locale`              | Calls `setLocale()` once the widget is up.               |
+| `nonce`               | Your page's CSP nonce, if you serve one; see below.      |
 | `inline`              | Render the chat inside this component's own box.         |
 | `className` / `style` | Applied to the inline container.                         |
 
@@ -110,6 +111,40 @@ value really changed, not when a parent re-rendered.
 `loaderUrl` is the exception: changing it after load warns and does nothing,
 because the bundle is already fetched and pointing the running widget at
 another deployment would need a page reload.
+
+### `nonce` — a page served with a strict CSP
+
+If your app is served `script-src 'nonce-…'` with no `'unsafe-inline'`, pass
+that response's nonce:
+
+```tsx
+// Next.js App Router: the nonce your middleware minted for THIS response
+import { headers } from 'next/headers';
+
+export default async function Layout() {
+  const nonce = (await headers()).get('x-nonce') ?? undefined;
+  return <ChatlyWidget publicId="acme-web" nonce={nonce} />;
+}
+```
+
+It goes on the `loader.js` script the component injects, and onto
+`window.Chatly.nonce` so that `widget.js`, the deferred chunks and the panel's
+own stylesheet carry it too. Without it a nonce-only policy blocks the loader,
+and the only sign is a CSP violation in your console.
+
+`nonce` also works on `<ChatlyLauncher publicId>`, which is the other
+component that injects the loader.
+
+**Mint a fresh value per response and never hardcode one.** A nonce that
+repeats is no better than `'unsafe-inline'`: anyone who can read one page's
+source can inject a script the next page will run. This component caches
+nothing — but a framework will happily cache the HTML you put it in, so the
+value has to come from the request. It is read once, before the loader is
+injected; changing it in props afterwards warns rather than re-stamping a
+script the browser has already evaluated.
+
+If your policy allows the widget's origin by host instead, leave the prop off.
+Nothing is stamped and the embed injects exactly what it always has.
 
 ### Inline mounting
 
@@ -156,11 +191,12 @@ handler.
 ## `useChatlyEvent(event, handler)`
 
 ```tsx
-function UnreadBadge() {
-  const [unread, setUnread] = useState(0);
-  useChatlyEvent('message', () => setUnread((n) => n + 1));
-  useChatlyEvent('open', () => setUnread(0));
-  return unread > 0 ? <span className="badge">{unread}</span> : null;
+function ChatAnalytics() {
+  useChatlyEvent('open', () => analytics.track('chat_opened'));
+  // The detail is `unknown` here. For the typed payload, use the component's
+  // own `onMessage={(m) => …}` — see `<ChatlyWidget />` above.
+  useChatlyEvent('message', () => analytics.track('visitor_sent_message'));
+  return null;
 }
 ```
 
@@ -170,6 +206,80 @@ so an inline arrow does not re-subscribe on every render.
 `'ready'` fires immediately if the session is already up — the widget replays
 the last one — which is what makes this usable from a component that mounts
 long after the page did.
+
+### What `'message'` is, and is not
+
+**`'message'` fires when the VISITOR sends something.** An agent's reply does
+not fire it, and neither does a bot's. It is the hook for "this person started
+talking to us" — analytics, a form you want to stop showing, a Slack ping —
+and it is the wrong hook for anything about incoming mail.
+
+This README showed an `UnreadBadge` built on it, which never counted a single
+reply. It counted the visitor's own messages, and the bug was invisible
+because the number went up when you tested it by typing.
+
+### An unread badge
+
+There is **no `unread` event today**, so a badge has to ask the server. The
+count is on the wire — `@chatlychat/sdk-js` exposes it:
+
+```tsx
+import { Chatly } from '@chatlychat/sdk-js'; // a separate install
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useChatlyEvent } from '@chatlychat/widget-react';
+
+function UnreadBadge() {
+  const [unread, setUnread] = useState(0);
+  // Built in an effect, never at module scope: `Chatly.init()` reads
+  // localStorage in its constructor, which throws on a server and on a
+  // browser with site data blocked.
+  const client = useRef<ReturnType<typeof Chatly.init> | null>(null);
+
+  const refresh = useCallback(() => {
+    client.current?.unreadCount().then(setUnread, () => undefined);
+  }, []);
+
+  // On mount, when the tab comes back, and when the panel closes — the three
+  // moments the number can have changed without this component hearing.
+  useEffect(() => {
+    client.current ??= Chatly.init({ publicId: 'acme-web' });
+    refresh();
+    const onVisible = (): void => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [refresh]);
+  useChatlyEvent('close', refresh);
+  useChatlyEvent('open', () => setUnread(0));
+
+  return unread > 0 ? <span className="badge">{unread}</span> : null;
+}
+```
+
+Why a request rather than a counter: the case a badge exists for is a reply
+that arrived after the visitor closed the tab, and no client-side tally can
+know about that one. `unreadCount()` sums `unreadContactCount` across the
+visitor's threads, which is the same number the widget's own Messages tab
+renders.
+
+It is deliberately not on `window.Chatly`. Making it known at page load would
+mean a request for every visitor, including the large majority who never open
+the chat and already pay for `widget.js` on every page view.
+
+**One caveat, and it decides whether the number is right.** A `Chatly` client
+keeps its own visitor session, under a different storage key from the widget's.
+For a signed-in visitor, call `client.identify()` with the same identity you
+pass to `<ChatlyWidget visitor={…} />` and both resolve to the same contact:
+
+```tsx
+await client.current?.identify({ externalId: user.id, userHash }); // same userHash
+```
+
+For an **anonymous** visitor there is nothing to resolve them by, so the two
+sessions are two different contacts and the count will not be about the
+conversations in the panel. Until the widget publishes the count itself, an
+unread badge is a feature for signed-in visitors.
 
 ## `<ChatlyLauncher />` — your button, the bundle loaded on demand
 

@@ -23,7 +23,12 @@ import { ChatlyWidget } from './ChatlyWidget.js';
 let calls: unknown[][] = [];
 
 interface ShimWindow {
-  Chatly?: ((...args: unknown[]) => void) & { q?: unknown[]; publicId?: string; lazy?: unknown };
+  Chatly?: ((...args: unknown[]) => void) & {
+    q?: unknown[];
+    publicId?: string;
+    lazy?: unknown;
+    nonce?: string;
+  };
 }
 
 const w = globalThis.window as unknown as ShimWindow;
@@ -330,5 +335,67 @@ describe('both components on one page', () => {
       </>,
     );
     expect(warn.mock.calls.flat().join(' ')).toContain('FIRST mount owns the configuration');
+  });
+});
+
+/*
+ * ── The CSP nonce ─────────────────────────────────────────────────────────
+ *
+ * Owner mode is the one that injects: it claims the widget, so it is what
+ * puts `loader.js` on the page. Control mode claims nothing and injects
+ * nothing, and the nonce there is simply unused rather than lost.
+ *
+ * As in `ChatlyWidget.spec.tsx`, the recording shim is deleted first — with
+ * one already on the page the lifecycle correctly declines to inject a second
+ * loader script.
+ */
+describe('the CSP nonce', () => {
+  function injectedLoaderScript(): HTMLScriptElement | null {
+    return document.head.querySelector('script[data-chatly-loader]');
+  }
+
+  beforeEach(() => {
+    delete w.Chatly;
+    for (const script of [...document.head.querySelectorAll('script[data-chatly-loader]')]) {
+      script.remove();
+    }
+  });
+
+  it('stamps the script it injects in owner mode', () => {
+    render(
+      <ChatlyLauncher publicId="acme-web" nonce="l4unch">
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => void vi.advanceTimersByTime(50));
+    expect(injectedLoaderScript()?.getAttribute('nonce')).toBe('l4unch');
+    expect(injectedLoaderScript()?.nonce).toBe('l4unch');
+    // On the shim too, which is where the loader reads it to stamp the bundle
+    // this component exists to defer.
+    expect((globalThis.window as unknown as ShimWindow).Chatly?.nonce).toBe('l4unch');
+  });
+
+  it('injects exactly what it always did without one', () => {
+    render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
+    act(() => void vi.advanceTimersByTime(50));
+    expect(injectedLoaderScript()?.hasAttribute('nonce')).toBe(false);
+    expect((globalThis.window as unknown as ShimWindow).Chatly?.nonce).toBeUndefined();
+  });
+
+  it('keeps the nonce out of the widget init options', () => {
+    // The nonce is the loader's and the bundle's, carried on the shim. In
+    // owner mode this component's own `init` must not gain a key of that name.
+    const chatly = Object.assign((...args: unknown[]) => {
+      calls.push(args);
+    }, {});
+    w.Chatly = chatly;
+    render(
+      <ChatlyLauncher publicId="acme-web" nonce="l4unch">
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => void vi.advanceTimersByTime(50));
+    expect(initOptions()).not.toHaveProperty('nonce');
+    expect(initOptions()['publicId']).toBe('acme-web');
   });
 });

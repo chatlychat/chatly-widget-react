@@ -20,7 +20,7 @@ import { useChatly, useChatlyEvent } from './useChatly.js';
 let calls: unknown[][] = [];
 
 interface ShimWindow {
-  Chatly?: ((...args: unknown[]) => void) & { q?: unknown[]; publicId?: string };
+  Chatly?: ((...args: unknown[]) => void) & { q?: unknown[]; publicId?: string; nonce?: string };
 }
 
 const w = globalThis.window as unknown as ShimWindow;
@@ -213,5 +213,70 @@ describe('useChatlyEvent', () => {
     const view = render(<Badge />);
     view.unmount();
     expect(argsFor('off').filter((a) => a[0] === 'message')).toHaveLength(1);
+  });
+});
+
+/*
+ * ── The CSP nonce ─────────────────────────────────────────────────────────
+ *
+ * A host served `script-src 'nonce-X'` with no `'unsafe-inline'` runs a
+ * script only if it carries X. `nonce` is a prop by virtue of
+ * `ChatlyEmbedOptions`, and these assert on the ATTRIBUTE of the script that
+ * was actually injected — a nonce that reaches the lifecycle and not the DOM
+ * is the entire bug class.
+ *
+ * `window.Chatly` is DELETED first: with a shim already on the page the
+ * lifecycle correctly injects nothing, on the grounds that the host pasted
+ * the snippet and its loader is already on its way. Every other test in this
+ * file wants that shim, so these three are the ones that take it away.
+ */
+describe('the CSP nonce', () => {
+  function injectedLoaderScript(): HTMLScriptElement | null {
+    return document.head.querySelector('script[data-chatly-loader]');
+  }
+
+  beforeEach(() => {
+    delete w.Chatly;
+    for (const script of [...document.head.querySelectorAll('script[data-chatly-loader]')]) {
+      script.remove();
+    }
+  });
+
+  it('stamps the script the embed injects', () => {
+    render(<ChatlyWidget publicId="acme-web" nonce="r3act" />);
+    act(() => void vi.advanceTimersByTime(50));
+    expect(injectedLoaderScript()?.getAttribute('nonce')).toBe('r3act');
+    // The property as well: it is what the browser's CSP check reads, and the
+    // only half that survives HTML's nonce-hiding.
+    expect(injectedLoaderScript()?.nonce).toBe('r3act');
+  });
+
+  it('publishes it on the shim, for the loader and the bundle', () => {
+    // This package injects one of the chain's three script tags. `widget.js`
+    // and the deferred chunks are stamped by the loader and the bundle, which
+    // read the nonce from here.
+    render(<ChatlyWidget publicId="acme-web" nonce="r3act" />);
+    act(() => void vi.advanceTimersByTime(50));
+    expect((globalThis.window as unknown as ShimWindow).Chatly?.nonce).toBe('r3act');
+  });
+
+  it('injects exactly what it always did without one', () => {
+    // 0.2.0 is published. The no-nonce case has to be unchanged, so it is
+    // pinned rather than assumed.
+    render(<ChatlyWidget publicId="acme-web" />);
+    act(() => void vi.advanceTimersByTime(50));
+    expect(injectedLoaderScript()?.hasAttribute('nonce')).toBe(false);
+    expect((globalThis.window as unknown as ShimWindow).Chatly?.nonce).toBeUndefined();
+  });
+
+  it('survives a re-render with a fresh props object', () => {
+    // A parent re-render produces a new object literal with the same nonce.
+    // That is not a change, so it must not warn and must not re-init.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const view = render(<ChatlyWidget publicId="acme-web" nonce="r3act" />);
+    view.rerender(<ChatlyWidget publicId="acme-web" nonce="r3act" />);
+    act(() => void vi.advanceTimersByTime(50));
+    expect(warn).not.toHaveBeenCalled();
+    expect(injectedLoaderScript()?.getAttribute('nonce')).toBe('r3act');
   });
 });
