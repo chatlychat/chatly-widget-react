@@ -60,6 +60,7 @@ export type {
   ChatlyIdentity,
   ChatlyInitOptions,
   ChatlyLazyMode,
+  ChatlyMessageAckEvent,
   ChatlyMessageEvent,
   ChatlyMessageReceivedEvent,
   ChatlyOpenEvent,
@@ -67,4 +68,5 @@ export type {
   ChatlyQuip,
   ChatlySession,
   ChatlyTheme,
+  ChatlyUnreadEvent,
 } from '@chatlychat/widget-element';

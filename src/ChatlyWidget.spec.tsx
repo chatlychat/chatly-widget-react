@@ -9,7 +9,12 @@
  * `@testing-library/react` is the dashboard's test library, at the dashboard's
  * version. No new library was added for this package.
  */
-import { __testing } from '@chatlychat/widget-element';
+import {
+  __testing,
+  EVENT_HANDLERS,
+  WIDGET_EVENT_NAMES,
+  type ChatlyHandlerName,
+} from '@chatlychat/widget-element';
 import { act, render } from '@testing-library/react';
 import { StrictMode, useState, type ReactElement } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -151,6 +156,44 @@ describe('prop changes', () => {
     view.rerender(<ChatlyWidget publicId="acme-web" onOpen={() => seen.push('second')} />);
     emit('open', undefined);
     expect(seen).toEqual(['second']);
+  });
+});
+
+describe('event props', () => {
+  /*
+   * ── Derived, because a list of names here would rot ───────────────────
+   *
+   * The widget emits twelve events and this component offered nine props:
+   * `onMessageAck`, `onMessageReceived` and `onUnread` did not exist, so a
+   * React consumer could not be told that a reply arrived or that the unread
+   * count changed. Every test in this file passed throughout, because each
+   * one names the one event it cares about.
+   *
+   * The expected set comes from `WIDGET_EVENT_NAMES` — `Object.keys` of a map
+   * the compiler holds exhaustive against `ChatlyEventName`. A thirteenth
+   * event with no prop fails here instead of shipping.
+   *
+   * The floor guards the blind case: an empty derived set would make the
+   * assertion below a comparison of two empty arrays.
+   */
+  it('offers a prop for EVERY widget event, and fires each one', () => {
+    expect(WIDGET_EVENT_NAMES.length).toBeGreaterThanOrEqual(12);
+
+    const seen: Array<[string, unknown]> = [];
+    // `detail?` and not `detail`: `onClose` takes no argument, and a handler
+    // that requires one is not assignable to it.
+    const handlers: Partial<Record<ChatlyHandlerName, (detail?: unknown) => void>> = {};
+    for (const name of WIDGET_EVENT_NAMES) {
+      const prop = EVENT_HANDLERS[name];
+      handlers[prop] = (detail) => seen.push([prop, detail]);
+    }
+
+    render(<ChatlyWidget publicId="acme-web" {...handlers} />);
+    for (const name of WIDGET_EVENT_NAMES) {
+      emit(name, { from: name });
+    }
+
+    expect(seen).toEqual(WIDGET_EVENT_NAMES.map((name) => [EVENT_HANDLERS[name], { from: name }]));
   });
 });
 

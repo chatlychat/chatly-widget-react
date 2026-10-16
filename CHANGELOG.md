@@ -1,5 +1,29 @@
 # @chatlychat/widget-react — changelog
 
+## 0.4.0 — 2026-10-16
+
+- **Three new event props**: `onMessageAck`, `onMessageReceived` and
+  `onUnread`, on both `<ChatlyWidget />` and `<ChatlyLauncher />`. All twelve
+  of the widget's events now have a prop; nine did.
+
+  The last line of the 0.3.0 entry below reads "There is no `unread` event to
+  subscribe to today", which was already untrue when it shipped: the widget
+  emitted one, replayed to a late subscriber, and it is the right number for a
+  badge. The README's `UnreadBadge` section has been rewritten around it
+  (`useChatlyEvent('unread', …)` plus `getUnreadCount()` for first paint);
+  what was still missing, until now, was the prop.
+
+- The two components' handler plumbing moved into one module and takes its
+  names from `@chatlychat/widget-element`'s `EVENT_HANDLERS`, so a widget
+  event added later reaches a React prop with no edit in this package.
+
+- `ChatlyMessageAckEvent` and `ChatlyUnreadEvent` are re-exported from the
+  package root, so the three new props can be typed without reaching into
+  `@chatlychat/widget-element`.
+
+- Requires `@chatlychat/widget-element@0.4.0`, which is where the three
+  events are forwarded from. `react` is still a **peer** dependency.
+
 ## 0.3.0 — 2026-10-15
 
 - `nonce` on `<ChatlyWidget />` and `<ChatlyLauncher />`: the page's CSP

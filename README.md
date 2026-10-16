@@ -87,10 +87,16 @@ Plus five of its own:
 | `inline`              | Render the chat inside this component's own box.         |
 | `className` / `style` | Applied to the inline container.                         |
 
-And the events, as callbacks: `onReady`, `onOpen`, `onClose`, `onMessage`,
+And all twelve of the events, as callbacks: `onReady`, `onOpen`, `onClose`,
+`onMessage`, `onMessageAck`, `onMessageReceived`, `onUnread`,
 `onConversation`, `onIdentified`, `onReset`, `onAction`, `onError`. Pass
 inline arrow functions freely — they are read through a ref, so a new one on
 every render costs nothing and the handler that fires is always the latest.
+
+`onMessage` means "the visitor sent something" and has never fired for a
+reply. `onMessageReceived` is an agent or bot message that arrived while its
+thread was on screen, and `onUnread` is the badge number — fired as soon as it
+is known and on every change.
 
 ### What a prop change actually does
 
@@ -220,66 +226,59 @@ because the number went up when you tested it by typing.
 
 ### An unread badge
 
-There is **no `unread` event today**, so a badge has to ask the server. The
-count is on the wire — `@chatlychat/sdk-js` exposes it:
+There **is** an `unread` event, and it is what a badge should use. It carries
+`{ count }` and it is replayed to a late subscriber, so a component that
+mounts a minute after the page did still gets the current number:
 
 ```tsx
-import { Chatly } from '@chatlychat/sdk-js'; // a separate install
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { useChatlyEvent } from '@chatlychat/widget-react';
+import { useState } from 'react';
+import { useChatly, useChatlyEvent } from '@chatlychat/widget-react';
 
 function UnreadBadge() {
-  const [unread, setUnread] = useState(0);
-  // Built in an effect, never at module scope: `Chatly.init()` reads
-  // localStorage in its constructor, which throws on a server and on a
-  // browser with site data blocked.
-  const client = useRef<ReturnType<typeof Chatly.init> | null>(null);
-
-  const refresh = useCallback(() => {
-    client.current?.unreadCount().then(setUnread, () => undefined);
-  }, []);
-
-  // On mount, when the tab comes back, and when the panel closes — the three
-  // moments the number can have changed without this component hearing.
-  useEffect(() => {
-    client.current ??= Chatly.init({ publicId: 'acme-web' });
-    refresh();
-    const onVisible = (): void => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    document.addEventListener('visibilitychange', onVisible);
-    return () => document.removeEventListener('visibilitychange', onVisible);
-  }, [refresh]);
-  useChatlyEvent('close', refresh);
-  useChatlyEvent('open', () => setUnread(0));
+  const chatly = useChatly();
+  // `getUnreadCount()` is the same number, for the first paint — before any
+  // change has happened there is no event to have heard.
+  const [unread, setUnread] = useState(() => chatly.getUnreadCount());
+  useChatlyEvent('unread', (detail) => setUnread((detail as { count: number }).count));
 
   return unread > 0 ? <span className="badge">{unread}</span> : null;
 }
 ```
 
-Why a request rather than a counter: the case a badge exists for is a reply
-that arrived after the visitor closed the tab, and no client-side tally can
-know about that one. `unreadCount()` sums `unreadContactCount` across the
-visitor's threads, which is the same number the widget's own Messages tab
-renders.
+No request of your own, no second visitor session to reconcile, and nothing to
+install beyond this package. The widget refreshes the number at boot, when the
+tab comes back, when the panel closes, and on a 60-second poll while the
+visitor has an open or pending thread they are not looking at — and it spends
+nothing at all on a visitor who has never had a conversation.
 
-It is deliberately not on `window.Chatly`. Making it known at page load would
-mean a request for every visitor, including the large majority who never open
-the chat and already pay for `widget.js` on every page view.
+The count is agent and bot messages the visitor has not had on screen, across
+their threads. It is derived from the widget's own watermark rather than the
+server's `unreadContactCount`, and the difference matters: nothing zeroes that
+column for a visitor, it counts an agent's private notes, and it does not count
+bot replies — the most common reply in this product.
 
-**One caveat, and it decides whether the number is right.** A `Chatly` client
-keeps its own visitor session, under a different storage key from the widget's.
-For a signed-in visitor, call `client.identify()` with the same identity you
-pass to `<ChatlyWidget visitor={…} />` and both resolve to the same contact:
+This README used to deny that the event existed, and showed a badge built on
+`@chatlychat/sdk-js`'s `client.unreadCount()`. That call still exists and is
+still right for a page that renders **no widget at all**, but it is a different
+number from the one above, and it kept its own visitor session under its own
+storage key — so for an anonymous visitor the two were two different contacts
+and the count was not about the conversations in the panel. Do not mix them in
+one badge.
 
-```tsx
-await client.current?.identify({ externalId: user.id, userHash }); // same userHash
-```
+### `useChatlyEvent` and the props reach the same twelve events
 
-For an **anonymous** visitor there is nothing to resolve them by, so the two
-sessions are two different contacts and the count will not be about the
-conversations in the panel. Until the widget publishes the count itself, an
-unread badge is a feature for signed-in visitors.
+They did not until 2026-10-16: `unread`, `message.ack` and `message.received`
+had no `onX` prop and no `chatly-*` DOM event, on the reasoning that "a dotted
+name does not survive the rename and a replayed event cannot be a DOM event".
+Neither held. A dot becomes a dash, which is what this package already does to
+every option name that crosses into HTML, and `ready` was always both replayed
+and a DOM event. All twelve now have a prop, a DOM event and a
+`useChatlyEvent` name.
+
+`useChatlyEvent` and `subscribe()` still go through `Chatly.on` directly, and
+that is the route to prefer for a badge: a replayed event (`ready`, `unread`)
+fires at the moment you subscribe, so a hook that mounts long after the page
+did is told the current count rather than nothing.
 
 ## `<ChatlyLauncher />` — your button, the bundle loaded on demand
 

@@ -64,6 +64,8 @@
 import { controls, prefetchWidget, startWidget } from '@chatlychat/widget-element';
 import { useEffect, useRef } from 'react';
 
+import { forwardersTo, handlersFrom, HANDLER_PROPS } from './handlers.js';
+
 import type {
   ChatlyEmbedHandle,
   ChatlyEmbedHandlers,
@@ -131,18 +133,6 @@ const LOCAL_PROPS = [
   'aria-label',
 ] as const;
 
-const HANDLER_PROPS = [
-  'onReady',
-  'onOpen',
-  'onClose',
-  'onMessage',
-  'onConversation',
-  'onIdentified',
-  'onReset',
-  'onAction',
-  'onError',
-] as const;
-
 /**
  * The options the widget is mounted with, in owner mode.
  *
@@ -163,20 +153,6 @@ function optionsFrom(props: ChatlyLauncherProps): ChatlyEmbedOptions {
   return options as unknown as ChatlyEmbedOptions;
 }
 
-function handlersFrom(props: ChatlyLauncherProps): ChatlyEmbedHandlers {
-  return {
-    onReady: props.onReady,
-    onOpen: props.onOpen,
-    onClose: props.onClose,
-    onMessage: props.onMessage,
-    onConversation: props.onConversation,
-    onIdentified: props.onIdentified,
-    onReset: props.onReset,
-    onAction: props.onAction,
-    onError: props.onError,
-  };
-}
-
 export function ChatlyLauncher(props: ChatlyLauncherProps): ReactElement {
   const owns = typeof props.publicId === 'string' && props.publicId.length > 0;
   const handle = useRef<ChatlyEmbedHandle | null>(null);
@@ -192,17 +168,7 @@ export function ChatlyLauncher(props: ChatlyLauncherProps): ReactElement {
     latest.current = handlersFrom(props);
   });
 
-  const forwarders = useRef<ChatlyEmbedHandlers>({
-    onReady: (session) => latest.current.onReady?.(session),
-    onOpen: (detail) => latest.current.onOpen?.(detail),
-    onClose: () => latest.current.onClose?.(),
-    onMessage: (message) => latest.current.onMessage?.(message),
-    onConversation: (detail) => latest.current.onConversation?.(detail),
-    onIdentified: (session) => latest.current.onIdentified?.(session),
-    onReset: (detail) => latest.current.onReset?.(detail),
-    onAction: (detail) => latest.current.onAction?.(detail),
-    onError: (detail) => latest.current.onError?.(detail),
-  });
+  const forwarders = useRef<ChatlyEmbedHandlers>(forwardersTo(latest));
 
   /*
    * Unmount, and only unmount. An empty dependency array is exactly that —

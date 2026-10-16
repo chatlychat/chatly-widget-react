@@ -39,6 +39,8 @@ import {
 } from '@chatlychat/widget-element';
 import { useEffect, useRef } from 'react';
 
+import { forwardersTo, handlersFrom, HANDLER_PROPS } from './handlers.js';
+
 import type { CSSProperties, ReactElement } from 'react';
 
 export interface ChatlyWidgetProps extends ChatlyEmbedOptions, ChatlyEmbedHandlers {
@@ -69,18 +71,6 @@ export interface ChatlyWidgetProps extends ChatlyEmbedOptions, ChatlyEmbedHandle
  */
 const LOCAL_PROPS = ['inline', 'className', 'style'] as const;
 
-const HANDLER_PROPS = [
-  'onReady',
-  'onOpen',
-  'onClose',
-  'onMessage',
-  'onConversation',
-  'onIdentified',
-  'onReset',
-  'onAction',
-  'onError',
-] as const;
-
 function optionsFrom(props: ChatlyWidgetProps, mountTo: Element | undefined): ChatlyEmbedOptions {
   const options: Record<string, unknown> = {};
   const skip = new Set<string>([...LOCAL_PROPS, ...HANDLER_PROPS]);
@@ -93,20 +83,6 @@ function optionsFrom(props: ChatlyWidgetProps, mountTo: Element | undefined): Ch
     options['mountTo'] = mountTo;
   }
   return options as unknown as ChatlyEmbedOptions;
-}
-
-function handlersFrom(props: ChatlyWidgetProps): ChatlyEmbedHandlers {
-  return {
-    onReady: props.onReady,
-    onOpen: props.onOpen,
-    onClose: props.onClose,
-    onMessage: props.onMessage,
-    onConversation: props.onConversation,
-    onIdentified: props.onIdentified,
-    onReset: props.onReset,
-    onAction: props.onAction,
-    onError: props.onError,
-  };
 }
 
 export function ChatlyWidget(props: ChatlyWidgetProps): ReactElement | null {
@@ -131,17 +107,7 @@ export function ChatlyWidget(props: ChatlyWidgetProps): ReactElement | null {
     // what "latest" means. There is nothing to compare and nothing to skip.
   });
 
-  const forwarders = useRef<ChatlyEmbedHandlers>({
-    onReady: (session) => latest.current.onReady?.(session),
-    onOpen: (detail) => latest.current.onOpen?.(detail),
-    onClose: () => latest.current.onClose?.(),
-    onMessage: (message) => latest.current.onMessage?.(message),
-    onConversation: (detail) => latest.current.onConversation?.(detail),
-    onIdentified: (session) => latest.current.onIdentified?.(session),
-    onReset: (detail) => latest.current.onReset?.(detail),
-    onAction: (detail) => latest.current.onAction?.(detail),
-    onError: (detail) => latest.current.onError?.(detail),
-  });
+  const forwarders = useRef<ChatlyEmbedHandlers>(forwardersTo(latest));
 
   /*
    * The props of the FIRST render, captured by `useRef`'s initial-value
