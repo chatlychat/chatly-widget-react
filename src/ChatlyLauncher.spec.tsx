@@ -129,9 +129,38 @@ describe('control mode — no publicId', () => {
 describe('owner mode — with a publicId', () => {
   it('claims the widget with the bundle deferred', () => {
     render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
-    // `manual`: the loader paints nothing and fetches nothing until asked.
-    expect(w.Chatly?.lazy).toBe('manual');
+    /*
+     * `'launcher'`, not `'manual'` — NCH-18. With `theme.hideLauncher` set
+     * (the assertion below this one) the loader paints nothing in either
+     * mode and arms the same one trigger, the queue watch that carries this
+     * button's `load` and `open`. The single branch they differ in is the
+     * returning chatter, and `'manual'` is the mode that refuses it by
+     * design. `ChatlyLauncher.preload.spec.tsx` is where that is pinned in
+     * both directions.
+     */
+    expect(w.Chatly?.lazy).toBe('launcher');
     expect(__testing.claimCount()).toBe(1);
+  });
+
+  it('keeps an explicit lazy="manual" meaning exactly what it says', () => {
+    // A host that types `'manual'` has been promised that nothing loads
+    // until it calls `load()`. The DEFAULT may preload; an explicit value
+    // may not be overridden, or the prop is a control that appears to work.
+    render(
+      <ChatlyLauncher publicId="acme-web" lazy="manual">
+        Chat
+      </ChatlyLauncher>,
+    );
+    expect(w.Chatly?.lazy).toBe('manual');
+  });
+
+  it('passes any other lazy mode through untouched', () => {
+    render(
+      <ChatlyLauncher publicId="acme-web" lazy="interaction">
+        Chat
+      </ChatlyLauncher>,
+    );
+    expect(w.Chatly?.lazy).toBe('interaction');
   });
 
   it("hides the widget's own launcher, so there is only one button", () => {

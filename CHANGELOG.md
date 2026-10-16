@@ -1,5 +1,62 @@
 # @chatlychat/widget-react — changelog
 
+## 0.5.0 — 2026-10-16
+
+### Changed
+
+- **`<ChatlyLauncher publicId>` now preloads the bundle for a returning
+  chatter.** Its owner-mode `lazy` default moved from `'manual'` to
+  `'launcher'`, so a reply that arrived while the tab was closed reaches
+  `onUnread` without the visitor clicking (Numera NCH-18). A first-time
+  visitor still pays for nothing but the loader: owner mode forces
+  `theme.hideLauncher`, so `'launcher'` and `'manual'` arm the same single
+  trigger and differ in exactly one branch — the returning chatter.
+- An explicit `lazy="manual"` is honoured unchanged and still means "load
+  nothing until I call `load()`". The old default conflated the two, because
+  `props.lazy ?? 'manual'` produced the same value either way; a default must
+  not make a promise the host did not ask for.
+
+### Added
+
+- `setOffset` on `controls` and `panelOffsetY` in the theme keys.
+
+### Also in this release
+
+- **`<ChatlyLauncher publicId>` preloads the widget for a returning chatter**
+  (NCH-18). Its owner-mode default for `lazy` moved from `'manual'` to
+  `'launcher'`, so a visitor this browser already holds a conversation for
+  gets `widget.js` on mount instead of on their first click.
+
+  `'manual'` is the one lazy mode that deliberately refuses to load for a
+  returning chatter — its promise is that nothing loads until you call
+  `Chatly('load')` — and a wrapper had chosen it on your behalf. So someone
+  who asked a question yesterday and got an answer overnight came back to a
+  plain button: no badge, no thread, and a reply that stayed invisible, since
+  counting unread needs the bundle and the bundle was what nothing fetched.
+
+  **Nothing changes for a first-time visitor.** Owner mode also sets
+  `theme.hideLauncher`, and the loader skips its stand-in launcher when that
+  is set — so with no `mountTo`, `'launcher'` and `'manual'` arm the same
+  single trigger (the queue carrying this button's own `load` and `open`) and
+  differ in that one case. A visitor who never touches the button still pays
+  for the ~2 KB loader and nothing else.
+
+  **If you want the old behaviour, pass `lazy="manual"` explicitly.** An
+  explicit `'manual'` was always honoured and still is: the default changed,
+  the mode did not. `Chatly.hasSession()` is how you make the call yourself —
+  but read the timing note, because `loader.js` is what defines it and that
+  tag is `async`.
+
+  One other consequence of the mode, for the few hosts that pass
+  `theme={{ hideLauncher: false }}` to get two launchers: that is also what
+  suppresses the stand-in, so the loader now paints its placeholder bubble
+  beside your button until the real one arrives.
+
+- Docs: the lazy table in the README said `'manual'` fetches nothing while the
+  guide said a returning chatter loads eagerly. Both were presented as
+  unconditional and only one could be true. Every table now carries the
+  exception on the `'manual'` row, and the README has the by-hand recipe.
+
 ## 0.4.0 — 2026-10-16
 
 - **Three new event props**: `onMessageAck`, `onMessageReceived` and

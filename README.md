@@ -297,11 +297,44 @@ import { ChatlyLauncher } from '@chatlychat/widget-react';
 ```
 
 Whether it owns the widget is decided by one thing: a `publicId`. With one it
-claims the widget with `lazy: 'manual'`, so the loader (~2KB) is fetched and
-the bundle is not; the first click downloads the bundle and opens the panel.
-Hovering or focusing the button starts that download early, so the click
-usually finds it cached — pass `prefetchOnHover={false}` to make the fetch
-strictly click-triggered.
+claims the widget with `lazy: 'launcher'` and `theme.hideLauncher`, so the
+loader (~2KB) is fetched and the bundle is not; the first click downloads the
+bundle and opens the panel. Hovering or focusing the button starts that
+download early, so the click usually finds it cached — pass
+`prefetchOnHover={false}` to make the fetch strictly click-triggered.
+
+One exception, and it is the reason the default is `'launcher'` rather than
+`'manual'`: a **returning chatter** — a visitor this browser already holds a
+conversation for — gets the bundle on mount, with no click. They may have a
+reply that arrived while the tab was closed, and the unread badge cannot be
+drawn without the bundle, so deferring it is how that reply stays invisible.
+A first-time visitor still pays for the loader and nothing else: with
+`hideLauncher` set there is no stand-in launcher to paint, so `'launcher'` and
+`'manual'` arm the same single trigger and differ only in that one case.
+
+Pass `lazy="manual"` if you want the stricter promise — nothing fetched or
+painted until something calls `Chatly('load')`, returning chatter included —
+and make the call yourself:
+
+```tsx
+import { useChatly } from '@chatlychat/widget-react';
+
+function PreloadForReturningChatters() {
+  const chatly = useChatly();
+  const maybeLoad = (): void => {
+    // `load` is the LOADER's verb, not a widget method, so it is not on
+    // `useChatly()` — reach it through the global the snippet installs.
+    if (chatly.hasSession()) {
+      (window as unknown as { Chatly?: (m: string) => void }).Chatly?.('load');
+    }
+  };
+  // NOT in a mount effect: `Chatly.hasSession` is defined by `loader.js` as
+  // it evaluates and the loader tag is `async`, so an effect in the mount
+  // commit asks before anything can answer and gets `false`. Ask on an
+  // interaction, or from the `ready` event.
+  return <button type="button" onClick={maybeLoad} />;
+}
+```
 
 It renders a bare `<button>` with your children in it, and that is
 deliberate: this package ships no stylesheet, so the alternative was inline
@@ -318,18 +351,25 @@ mount owns the configuration, so put `hideLauncher` there instead.
 The same option works on `<ChatlyWidget />` and on `<chatly-widget>`, with
 the widget's own launcher kept:
 
-| value                 | what happens                                                                                               |
-| --------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `false` (default)     | the bundle is fetched on page load, as it always has been                                                  |
-| `true` / `'launcher'` | the loader paints a stand-in launcher matching your theme; using it fetches the bundle and opens the panel |
-| `'interaction'`       | as above, plus a pre-warm on the visitor's first interaction with the page                                 |
-| `'manual'`            | nothing is painted or fetched until something calls `Chatly('load')`                                       |
+| value                 | what happens                                                                                                                                                    |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `false` (default)     | the bundle is fetched on page load, as it always has been                                                                                                       |
+| `true` / `'launcher'` | the loader paints a stand-in launcher matching your theme; using it fetches the bundle and opens the panel. A returning chatter's bundle is fetched immediately |
+| `'interaction'`       | as above, plus a pre-warm on the visitor's first interaction with the page                                                                                      |
+| `'manual'`            | nothing is painted or fetched until something calls `Chatly('load')` — **returning chatters are not preloaded either**                                          |
 
-Two things to know before turning it on. A `track()` call made in lazy mode
-waits in the queue until the bundle loads, so a visitor who leaves the page
-first loses the event. And `lazy` is read once, when `loader.js` evaluates —
-changing it in props afterwards warns rather than taking effect, because by
-then the question has been answered.
+A returning chatter is a visitor this browser already holds a conversation
+for. Every mode but `'manual'` fetches the bundle for them at once, because
+the unread badge cannot be drawn without it and a reply that arrived while
+they were away would otherwise be invisible until they clicked. `'manual'`
+is the mode that leaves that call to you — `Chatly.hasSession()` is the test,
+and it is answered by `loader.js` before the bundle exists.
+
+Two more things to know before turning it on. A `track()` call made in lazy
+mode waits in the queue until the bundle loads, so a visitor who leaves the
+page first loses the event. And `lazy` is read once, when `loader.js`
+evaluates — changing it in props afterwards warns rather than taking effect,
+because by then the question has been answered.
 
 With `inline`, where there is no launcher at all, the trigger is the
 container approaching the viewport instead.

@@ -8,10 +8,13 @@
  * `mode` would make the caller describe something the props already say.
  *
  *   **Owner.** `<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>` and
- *   nothing else on the page. It claims the widget with `lazy: 'manual'`, so
- *   `loader.js` (~2KB) is fetched and `widget.js` (~44KB) is NOT. The first
- *   click loads the bundle and opens the panel. A visitor who never clicks
- *   never pays for the bundle at all.
+ *   nothing else on the page. It claims the widget with `lazy: 'launcher'`
+ *   and `theme.hideLauncher`, so `loader.js` (~2KB) is fetched and
+ *   `widget.js` (~44KB) is NOT. The first hover, focus or click loads the
+ *   bundle and opens the panel. A first-time visitor who never reaches for
+ *   the button never pays for the bundle at all — and a RETURNING chatter
+ *   gets it on mount, because they may have a reply waiting. See
+ *   `DEFAULT_OWNER_LAZY`.
  *
  *   **Control.** `<ChatlyLauncher>Help</ChatlyLauncher>` on a page that
  *   already renders `<ChatlyWidget>`. It claims nothing and mounts nothing —
@@ -44,7 +47,10 @@
  * next to the button you just styled. So owner mode forces
  * `theme.hideLauncher`, which you can still override by passing
  * `theme={{ hideLauncher: false }}` explicitly if two launchers is genuinely
- * what you want.
+ * what you want. Note what that override also switches on: `hideLauncher` is
+ * what suppresses lazy mode's stand-in launcher, so turning it off means the
+ * loader paints its placeholder bubble beside your button and the real one
+ * replaces it when the bundle lands.
  *
  * If `<ChatlyWidget>` mounts FIRST it owns the configuration, and this
  * component's `hideLauncher` is one of the options that loses — so you get
@@ -93,11 +99,18 @@ export interface ChatlyLauncherProps extends Partial<ChatlyEmbedOptions>, Chatly
    * When the bundle is fetched, in OWNER mode. Ignored in control mode,
    * where another component already owns the widget.
    *
-   * Defaults to `'manual'`: nothing is fetched until this button is used.
-   * That is the whole reason this component exists — `lazy={false}` turns it
-   * into `<ChatlyWidget theme={{ hideLauncher: true }}>` with extra steps,
-   * and is offered only because a host that wants the panel to open with no
-   * delay at all has a legitimate reason to ask.
+   * Defaults to `'launcher'`: nothing is fetched for a first-time visitor
+   * until this button is hovered, focused or clicked, and the bundle IS
+   * fetched on mount for a returning chatter who already holds a
+   * conversation on this channel. That is the whole reason this component
+   * exists — `lazy={false}` turns it into
+   * `<ChatlyWidget theme={{ hideLauncher: true }}>` with extra steps, and is
+   * offered only because a host that wants the panel to open with no delay
+   * at all has a legitimate reason to ask.
+   *
+   * Pass `'manual'` to get the stricter promise: nothing is fetched or
+   * painted until something calls `Chatly('load')`, not even for a returning
+   * chatter. See `DEFAULT_OWNER_LAZY` for why that is not the default.
    */
   lazy?: ChatlyLazyMode;
   /**
@@ -134,6 +147,55 @@ const LOCAL_PROPS = [
 ] as const;
 
 /**
+ * What owner mode asks the loader for when the host says nothing about `lazy`.
+ *
+ * ── The defect this value is the fix for (NCH-18) ────────────────────────
+ *
+ * It was `'manual'`, and `'manual'` is the one lazy mode that deliberately
+ * does NOT load for a returning chatter — see the `hasSession` docblock in
+ * `apps/widget-loader/src/lazy.ts`, where that refusal is argued for by name.
+ * So a visitor who asked a question yesterday, got an answer overnight and
+ * came back to a page whose only chat affordance is `<ChatlyLauncher>` saw a
+ * plain button: no badge, no thread, and a reply that stayed invisible until
+ * they happened to click. Counting unread needs the bundle, and the bundle
+ * was exactly what nothing was fetching.
+ *
+ * ── Why the default moved instead of the component calling `load()` ──────
+ *
+ * The obvious fix is `hasSession() && Chatly('load')` in a mount effect. It
+ * is wrong twice.
+ *
+ * First, `Chatly.hasSession` is assigned by `loader.js` as it evaluates, and
+ * the lifecycle injects that script `async` in the very effect this call
+ * would sit in. So the predicate reads `undefined` — `controls.hasSession()`
+ * falls back to `false` — and the preload never fires on a real page. It
+ * fires in a test that seeds the stub, which is the shape of green suite this
+ * repo has shipped before.
+ *
+ * Second, `props.lazy ?? 'manual'` cannot tell an absent prop from an
+ * explicit `lazy="manual"`, and those two must not behave the same: a host
+ * that types `'manual'` has been promised that nothing loads until it says
+ * so, and a wrapper that preloads anyway has lied to it. Adding a sentinel
+ * for "absent" would make the two distinguishable — and would leave the
+ * DEFAULT making a promise it then breaks. The honest fix is for the default
+ * to stop choosing the mode whose whole meaning is a promise the wrapper is
+ * not in a position to keep. `'launcher'` is an ordinary value a host can
+ * type for itself, so there is no hidden mode and no sentinel: absent means
+ * `'launcher'`, explicit `'manual'` means `'manual'`.
+ *
+ * ── Why `'launcher'` is the same thing for everyone but that one visitor ──
+ *
+ * Owner mode also forces `theme.hideLauncher`, and `armLazyLoad` skips the
+ * stand-in launcher when that is set. So with no `mountTo` and no
+ * `'interaction'` pre-warm, `'launcher'` and `'manual'` arm exactly the same
+ * single trigger — the queue watch that carries this button's `load` and
+ * `open` — and differ in one branch only: the returning-chatter preload. A
+ * first-time visitor who never touches the button still costs `loader.js`
+ * and nothing else, which is what `ChatlyLauncher.preload.spec.tsx` pins.
+ */
+const DEFAULT_OWNER_LAZY: ChatlyLazyMode = 'launcher';
+
+/**
  * The options the widget is mounted with, in owner mode.
  *
  * `theme.hideLauncher` is merged rather than assigned so an explicit
@@ -148,7 +210,7 @@ function optionsFrom(props: ChatlyLauncherProps): ChatlyEmbedOptions {
       options[key] = value;
     }
   }
-  options['lazy'] = props.lazy ?? 'manual';
+  options['lazy'] = props.lazy ?? DEFAULT_OWNER_LAZY;
   options['theme'] = { hideLauncher: true, ...props.theme };
   return options as unknown as ChatlyEmbedOptions;
 }
