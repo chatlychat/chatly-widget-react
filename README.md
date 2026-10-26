@@ -138,10 +138,12 @@ drop a live conversation every time your auth check is slow — so
 opt-in. It is also ignored when `identity` or `identityEndpoint` is set, since
 a provider answers the same question under the same rule.
 
-A changed `theme` is the one case with a better answer: `useChatly().setTheme()`
-repaints an open panel in place, with no re-mount and no network request. The
-prop still re-initialises, because it describes a whole theme and a merge
-cannot un-apply a key you removed.
+A changed `theme` value is applied live with `setTheme()` — an open panel is
+repainted in place, with no re-mount and no network request — so computing the
+theme from your light/dark state is safe. The prop re-initialises only when a
+top-level key is REMOVED (or set to `undefined`), because a merge cannot
+un-apply one; a value changed live and then removed keeps its last value until
+a page load.
 
 `loaderUrl` is the exception: changing it after load warns and does nothing,
 because the bundle is already fetched and pointing the running widget at

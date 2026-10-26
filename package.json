@@ -1,6 +1,6 @@
 {
   "name": "@chatlychat/widget-react",
-  "version": "0.20.0",
+  "version": "0.21.0",
   "description": "The Chatly chat widget as a React component — mount, unmount, identity and locale changes handled, StrictMode-safe.",
   "license": "MIT",
   "homepage": "https://github.com/chatlychat/chatly-widget-react#readme",
@@ -58,7 +58,7 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@chatlychat/widget-element": "^0.22.0"
+    "@chatlychat/widget-element": "^0.23.0"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0"

@@ -324,6 +324,19 @@ describe('owner mode — with a publicId', () => {
   });
 });
 
+describe('a changed theme prop', () => {
+  it('repaints with setTheme instead of re-initialising', () => {
+    const { rerender } = render(
+      <ChatlyWidget publicId="acme-web" theme={{ primaryColor: '#111111' }} />,
+    );
+    rerender(<ChatlyWidget publicId="acme-web" theme={{ primaryColor: '#222222' }} />);
+    expect(argsFor('init')).toHaveLength(1);
+    expect(argsFor('setTheme')).toEqual([[{ primaryColor: '#222222' }]]);
+    rerender(<ChatlyWidget publicId="acme-web" theme={{}} />);
+    expect(argsFor('init')).toHaveLength(2);
+  });
+});
+
 describe('both components on one page', () => {
   it('is one widget and one claim each, not two widgets', () => {
     // The lifecycle is reference-counted by claim identity, so this is a
