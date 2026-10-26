@@ -205,12 +205,15 @@ const LOCAL_PROPS = [
  * The obvious fix is `hasSession() && Chatly('load')` in a mount effect. It
  * is wrong twice.
  *
- * First, `Chatly.hasSession` is assigned by `loader.js` as it evaluates, and
- * the lifecycle injects that script `async` in the very effect this call
- * would sit in. So the predicate reads `undefined` — `controls.hasSession()`
- * falls back to `false` — and the preload never fires on a real page. It
- * fires in a test that seeds the stub, which is the shape of green suite this
- * repo has shipped before.
+ * First, as of the fix: `Chatly.hasSession` was assigned by `loader.js` as it
+ * evaluated, and the lifecycle injects that script `async` in the very effect
+ * this call would sit in. So the predicate read `undefined` —
+ * `controls.hasSession()` falls back to `false` — and the preload never fired
+ * on a real page. It fired in a test that seeds the stub, which is the shape
+ * of green suite this repo has shipped before. That half is no longer true:
+ * `startWidget` installs `hasSession` synchronously (`defer-loader.ts`), so
+ * the predicate is answerable in a mount effect now. The second reason below
+ * is the one still holding this default where it is.
  *
  * Second, `props.lazy ?? 'manual'` cannot tell an absent prop from an
  * explicit `lazy="manual"`, and those two must not behave the same: a host

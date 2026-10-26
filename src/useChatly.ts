@@ -8,8 +8,37 @@
  * the mistake this exists to make unnecessary, and the lifecycle warns when
  * someone makes it anyway.
  */
-import { controls, subscribe, type ChatlyEventName } from '@chatlychat/widget-element';
+import {
+  controls,
+  prefetchWidget,
+  subscribe,
+  type ChatlyEventName,
+} from '@chatlychat/widget-element';
 import { useEffect, useRef } from 'react';
+
+/**
+ * What the hook hands back: the widget's methods, plus `load`.
+ *
+ * ── Why `load` is added HERE and not to `controls` (NPOL-5) ─────────────
+ *
+ * `controls` mirrors `ChatlyApi` — the methods `window.Chatly` really has —
+ * and `scripts/check-widget-wrapper-parity.mjs` compares the two in BOTH
+ * directions so that a wrapper cannot invent widget surface. `load` is the
+ * LOADER's verb (`WANTS_UI` in `apps/widget-loader/src/lazy.ts`); the bundle
+ * has no such method and warns `ignored a call to unknown method "load"` if
+ * you hand it one. Putting it on `controls` would therefore need a carve-out
+ * in that gate for a method the comparison is right about.
+ *
+ * So it is composed on at this layer instead, over `prefetchWidget()`, which
+ * already exists for exactly this and is already argued for by name in
+ * `lazy.ts` — including why it must not go through `dispatch`. The gate keeps
+ * its two-way comparison and the README stops telling React consumers to
+ * reach through `window.Chatly`.
+ *
+ * `hasSession()` needed nothing: it IS widget surface, so it has been on
+ * `controls` — and on this hook — all along.
+ */
+const api: typeof controls & { load: () => void } = { ...controls, load: prefetchWidget };
 
 /**
  * The widget's post-boot methods.
@@ -25,12 +54,17 @@ import { useEffect, useRef } from 'react';
  * arrived, and there is nothing to await in that state; `useChatlyEvent`
  * (or `onIdentified`) is how you learn it landed.
  *
- * Calling any of these with no widget mounted warns in the console and does
- * nothing. It does not throw: a click handler on the host page must not break
- * because the chat is misconfigured.
+ * Calling any of these before a widget has mounted is safe, and since 0.19.0
+ * it is not lost either: the call is queued and replayed as soon as one
+ * mounts, so a "Chat with us" link that renders above `<ChatlyWidget>` keeps
+ * its first click. One console warning says so, because a page that never
+ * mounts a widget still gets nothing. It never throws — a click handler on
+ * the host page must not break because the chat is misconfigured.
+ *
+ * `load()` is the exception to "the widget's methods": see `api` above.
  */
-export function useChatly(): typeof controls {
-  return controls;
+export function useChatly(): typeof api {
+  return api;
 }
 
 /**

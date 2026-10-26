@@ -106,12 +106,37 @@ This is the part worth knowing, because the three outcomes are different:
 | ----------------------- | ----------------------------------------------------- |
 | `visitor`               | `identify()`. Nothing is re-mounted.                  |
 | `visitor` → `undefined` | `reset()` — a sign-out, so the next session is fresh. |
+| `visitor={null}`        | `reset()` **on mount too**, not only on a change.     |
 | `locale`                | `setLocale()`. Nothing is re-mounted.                 |
 | anything else           | `init()` again, which **destroys and re-mounts**.     |
 
 A re-mount loses nothing durable — the conversation lives on the server — but
 it closes an open panel. What this component guarantees is that it only happens
 when a value really changed, not when a parent re-rendered.
+
+### `visitor={null}` — signing out on a page that loaded signed out
+
+The two `visitor` rows above are **transitions**: the prop held an identity and
+then went away. A page that renders already signed out never makes that
+transition, so the previous account's external id stays in the browser — the
+widget keeps it at `chatly:xid:<publicId>` so it can spot an account switch. On
+a shared device that is the last person's identity outliving a sign-out that
+happened in another tab.
+
+Pass `null` and the widget compares its own stored identity on mount and resets
+itself if one is there. You need no `localStorage` key of your own for it:
+
+```tsx
+// signed out, and saying so
+<ChatlyWidget publicId="acme-web" visitor={user ? { externalId: user.id, userHash } : null} />
+```
+
+**An absent `visitor` still changes nothing, deliberately.** The widget cannot
+tell it apart from "identity has not resolved yet", and a reset on that would
+drop a live conversation every time your auth check is slow — so
+`visitor={user ? {…} : undefined}` keeps today's behaviour. `null` is the
+opt-in. It is also ignored when `identity` or `identityEndpoint` is set, since
+a provider answers the same question under the same rule.
 
 A changed `theme` is the one case with a better answer: `useChatly().setTheme()`
 repaints an open panel in place, with no re-mount and no network request. The
@@ -179,7 +204,15 @@ usable.
 
 Returns the widget's post-boot methods: `open`, `close`, `toggle`,
 `identify`, `setUser`, `setCustomAttributes`, `deleteCustomAttribute`,
-`setLabel`, `removeLabel`, `setLocale`, `track`, `registerPushToken`, `reset`.
+`setLabel`, `removeLabel`, `setLocale`, `track`, `registerPushToken`, `reset`,
+`dismiss`, `setStorageConsent`, `setConsent`, `setOffset`, `setTheme`,
+`getUnreadCount`, `hasSession`, `startConversation`, `setContext`,
+`reportAction` — plus `load`.
+
+`load()` is the one method that is **not** the widget's: it is the loader's,
+and it starts the bundle download without opening anything (what `lazy="manual"`
+needs, and what a hover-prefetch on your own button does). It is here so you
+never have to reach for `window.Chatly`. It is a no-op once the bundle is up.
 
 The object is referentially stable, so it is safe in a dependency array.
 
@@ -194,9 +227,13 @@ and there is nothing to await in that state — use `onIdentified` (or
 `useChatlyEvent('identified', …)`) to learn that it landed, and `onError` to
 learn that it did not.
 
-Calling any of them with no widget mounted warns in the console and does
-nothing. It never throws: a misconfigured chat must not break your click
-handler.
+Calling any of them before a widget has mounted is safe, and since 0.19.0 the
+call is not lost either: it is **queued and replayed** as soon as one mounts.
+A "Chat with us" link in your header keeps its first click even when
+`<ChatlyWidget>` renders a commit later, or after a channel id has been
+fetched. One console warning says the call was queued, because a page that
+never mounts a widget still gets nothing. It never throws: a misconfigured
+chat must not break your click handler.
 
 ## `useChatlyEvent(event, handler)`
 
@@ -301,11 +338,12 @@ import { ChatlyLauncher } from '@chatlychat/widget-react';
 ```
 
 Whether it owns the widget is decided by one thing: a `publicId`. With one it
-claims the widget with `lazy: 'launcher'` and `theme.hideLauncher`, so the
-loader (~2KB) is fetched and the bundle is not; the first click downloads the
-bundle and opens the panel. Hovering or focusing the button starts that
-download early, so the click usually finds it cached — pass
-`prefetchOnHover={false}` to make the fetch strictly click-triggered.
+claims the widget with `lazy: 'launcher'` and `theme.hideLauncher`, and since
+0.18.0 **nothing is fetched at all** until the visitor reaches for the chat —
+not the bundle and not `loader.js` either. The first hover, focus or click
+downloads both and opens the panel; hovering or focusing starts it early, so
+the click usually finds it cached. Pass `prefetchOnHover={false}` to make the
+fetch strictly click-triggered.
 
 One exception, and it is the reason the default is `'launcher'` rather than
 `'manual'`: a **returning chatter** — a visitor this browser already holds a
@@ -317,26 +355,26 @@ A first-time visitor still pays for the loader and nothing else: with
 `'manual'` arm the same single trigger and differ only in that one case.
 
 Pass `lazy="manual"` if you want the stricter promise — nothing fetched or
-painted until something calls `Chatly('load')`, returning chatter included —
-and make the call yourself:
+painted until something calls `load()`, returning chatter included — and make
+the call yourself:
 
 ```tsx
+import { useEffect } from 'react';
 import { useChatly } from '@chatlychat/widget-react';
 
 function PreloadForReturningChatters() {
   const chatly = useChatly();
-  const maybeLoad = (): void => {
-    // `load` is the LOADER's verb, not a widget method, so it is not on
-    // `useChatly()` — reach it through the global the snippet installs.
+  // Safe in a mount effect since 0.18.0: `hasSession()` is answered
+  // synchronously, by this package, from the same stored-thread key the
+  // loader and the bundle read. It used to be defined by `loader.js` as it
+  // evaluated — and the tag is `async`, so an effect in the mount commit
+  // asked before anything could answer and got `false`.
+  useEffect(() => {
     if (chatly.hasSession()) {
-      (window as unknown as { Chatly?: (m: string) => void }).Chatly?.('load');
+      chatly.load();
     }
-  };
-  // NOT in a mount effect: `Chatly.hasSession` is defined by `loader.js` as
-  // it evaluates and the loader tag is `async`, so an effect in the mount
-  // commit asks before anything can answer and gets `false`. Ask on an
-  // interaction, or from the `ready` event.
-  return <button type="button" onClick={maybeLoad} />;
+  }, [chatly]);
+  return null;
 }
 ```
 
@@ -360,19 +398,21 @@ the widget's own launcher kept:
 | `false` (default)     | the bundle is fetched on page load, as it always has been                                                                                                       |
 | `true` / `'launcher'` | the loader paints a stand-in launcher matching your theme; using it fetches the bundle and opens the panel. A returning chatter's bundle is fetched immediately |
 | `'interaction'`       | as above, plus a pre-warm on the visitor's first interaction with the page                                                                                      |
-| `'manual'`            | nothing is painted or fetched until something calls `Chatly('load')` — **returning chatters are not preloaded either**                                          |
+| `'manual'`            | nothing is painted or fetched until something calls `useChatly().load()` — **returning chatters are not preloaded either**                                      |
 
 A returning chatter is a visitor this browser already holds a conversation
 for. Every mode but `'manual'` fetches the bundle for them at once, because
 the unread badge cannot be drawn without it and a reply that arrived while
 they were away would otherwise be invisible until they clicked. `'manual'`
-is the mode that leaves that call to you — `Chatly.hasSession()` is the test,
-and it is answered by `loader.js` before the bundle exists.
+is the mode that leaves that call to you — `useChatly().hasSession()` is the test,
+and since 0.18.0 it is answered **synchronously, at mount**, by this package
+rather than by `loader.js`. It had to be: deferring the loader means there is
+nothing else to answer it, and `'manual'` is the mode most likely to ask.
 
 Two more things to know before turning it on. A `track()` call made in lazy
 mode waits in the queue until the bundle loads, so a visitor who leaves the
-page first loses the event. And `lazy` is read once, when `loader.js`
-evaluates — changing it in props afterwards warns rather than taking effect,
+page first loses the event. And `lazy` is read once, at mount — changing it in
+props afterwards warns rather than taking effect,
 because by then the question has been answered.
 
 With `inline`, where there is no launcher at all, the trigger is the

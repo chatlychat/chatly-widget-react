@@ -1,5 +1,17 @@
 # @chatlychat/widget-react — changelog
 
+## 0.20.0 — 2026-10-26
+
+Picks up `@chatlychat/widget-element` 0.22.0, and with it a privacy fix for `<ChatlyWidget>` and `<ChatlyLauncher>`: **`visitor={null}` now signs the visitor out on MOUNT**, not only when the prop changes. A page that renders already signed out used to leave the previous account's external id in the browser, because `reset()` needs an identity→nothing transition and a fresh page load never makes one.
+
+`visitor={user ? {…} : null}` is the opt-in. `visitor={user ? {…} : undefined}` is unchanged and still does nothing, deliberately — an absent prop cannot be told apart from "my auth check has not resolved yet", and resetting there would drop a live conversation on every slow endpoint. See that package's changelog.
+
+## 0.19.0 — 2026-10-26
+
+Picks up `@chatlychat/widget-element` 0.21.0: a `useChatly()` call made before `<ChatlyWidget>` has mounted is **queued and replayed** instead of dropped, so a "Chat with us" link in a header above the component keeps its first click.
+
+`useChatly()` also offers **`load()`** now — start the bundle download without opening anything, which `lazy="manual"` needs for a returning chatter and a hover-prefetch on your own button wants. It was the one thing the README still sent you to `window.Chatly` for. It is not a widget method (the loader owns `load`), so it is composed onto the hook rather than added to `controls`, which mirrors the widget's own API exactly.
+
 ## 0.18.0 — 2026-10-26
 
 Picks up `@chatlychat/widget-element` 0.20.0, and with it a privacy fix that applies to `<ChatlyWidget>` and `<ChatlyLauncher>`: with `lazy` set to anything but `'off'`, nothing is requested from any Chatly host until the visitor reaches for the chat. Previously every mode fetched `loader.js` on page load. See that package's changelog for why it needed a code move rather than a branch.

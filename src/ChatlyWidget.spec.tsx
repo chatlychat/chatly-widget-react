@@ -43,9 +43,26 @@ function emit(event: string, detail: unknown): void {
   }
 }
 
+/**
+ * A `localStorage` of our own: jsdom under Node does not provide one here, so
+ * a test that relies on the real thing reads `undefined` and takes the guarded
+ * branch — which passes against an implementation that never reads storage.
+ */
+const STORE = new Map<string, string>();
+Object.defineProperty(window, 'localStorage', {
+  configurable: true,
+  get: () => ({
+    getItem: (key: string): string | null => STORE.get(key) ?? null,
+    setItem: (key: string, value: string): void => void STORE.set(key, value),
+    removeItem: (key: string): void => void STORE.delete(key),
+    clear: (): void => STORE.clear(),
+  }),
+});
+
 beforeEach(() => {
   vi.useFakeTimers();
   __testing.reset();
+  STORE.clear();
   calls = [];
   w.Chatly = Object.assign((...args: unknown[]) => {
     calls.push(args);
@@ -321,5 +338,33 @@ describe('the CSP nonce', () => {
     act(() => void vi.advanceTimersByTime(50));
     expect(warn).not.toHaveBeenCalled();
     expect(injectedLoaderScript()?.getAttribute('nonce')).toBe('r3act');
+  });
+});
+
+describe('visitor={null} on a page that loaded signed out', () => {
+  /*
+   * NPOL-4, and a privacy fix rather than a convenience. `reset()` on
+   * sign-out is a TRANSITION, so a page that renders already signed out
+   * leaves the previous account's `chatly:xid:<publicId>` in the browser —
+   * on a shared device, the last person's identity surviving a sign-out that
+   * happened in another tab.
+   */
+  it('resets when an identity is stored for this channel', () => {
+    STORE.set('chatly:xid:acme-web', 'u_previous');
+    render(<ChatlyWidget publicId="acme-web" visitor={null} />);
+    expect(argsFor('reset')).toHaveLength(1);
+    // And `null` never reaches the widget's own `init`.
+    expect(argsFor('init')[0]?.[0]).toEqual({ publicId: 'acme-web' });
+  });
+
+  it('changes nothing when `visitor` is merely absent', () => {
+    /*
+     * The control that makes this an opt-in. `visitor={user?.id ? {…} :
+     * undefined}` renders on every commit before an auth check resolves, and
+     * resetting there would drop a live conversation on every slow endpoint.
+     */
+    STORE.set('chatly:xid:acme-web', 'u_previous');
+    render(<ChatlyWidget publicId="acme-web" visitor={undefined} />);
+    expect(argsFor('reset')).toEqual([]);
   });
 });
