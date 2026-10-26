@@ -1,5 +1,13 @@
 # @chatlychat/widget-react — changelog
 
+## 0.22.0 — 2026-10-26
+
+Picks up `@chatlychat/widget-element` 0.24.0: `theme.colorScheme: 'host'` (the
+widget follows your page's own light/dark switch, no `MutationObserver`
+needed) and a typed `onError` — `ChatlyErrorEvent` is re-exported from this
+package's root, and an `init` failure now carries `apiCode`, `operation` and
+`retryable` alongside the existing `code`.
+
 ## 0.21.0 — 2026-10-26
 
 Picks up `@chatlychat/widget-element` 0.23.0: a changed `theme` prop on `<ChatlyWidget>` and `<ChatlyLauncher>` is applied live with `setTheme` instead of re-initialising, so a theme computed from light/dark state no longer closes an open panel. Removing a top-level key still re-initialises, since a merge cannot un-apply one. See that package's changelog for the limit.
