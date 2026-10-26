@@ -383,11 +383,42 @@ describe('the CSP nonce', () => {
     return document.head.querySelector('script[data-chatly-loader]');
   }
 
+  /**
+   * A stored thread, so owner mode actually injects something to inspect.
+   *
+   * `<ChatlyLauncher publicId>` asks for `lazy: 'launcher'`, and since
+   * 2026-10-26 that mode makes no request at all until the visitor reaches for
+   * the chat — so a first-time visitor's mount has no `<script>` and there is
+   * no nonce to assert. The returning-chatter preload is the one path in owner
+   * mode that injects synchronously, which is what these tests need.
+   *
+   * `localStorage` is stubbed because jsdom 30 does not expose one through
+   * vitest's environment even with a real document URL, and `hasStoredThread`
+   * reads `chatly:vr:<publicId>` — its existence alone is the answer, so the
+   * value is deliberately not a realistic payload.
+   */
   beforeEach(() => {
     delete w.Chatly;
+    const store = new Map([['chatly:vr:acme-web', '{}']]);
+    for (const name of ['localStorage', 'sessionStorage']) {
+      vi.stubGlobal(name, {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => void store.set(k, v),
+        removeItem: (k: string) => void store.delete(k),
+        clear: () => store.clear(),
+        key: (i: number) => [...store.keys()][i] ?? null,
+        get length() {
+          return store.size;
+        },
+      });
+    }
     for (const script of [...document.head.querySelectorAll('script[data-chatly-loader]')]) {
       script.remove();
     }
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('stamps the script it injects in owner mode', () => {

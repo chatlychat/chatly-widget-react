@@ -32,10 +32,21 @@
  *     observable. If this file's expectations and that file's inputs ever
  *     disagree, the chain is broken and one of the two is lying.
  *
- * The storage read is not mocked here on purpose. It is not this package's:
- * nothing in `@chatlychat/widget-react` or `@chatlychat/widget-element` reads
- * `chatly:vr:*`, and seeding it in this suite would be a fixture that looks
- * load-bearing and decides nothing.
+ * ── The storage read IS this package's now (2026-10-26) ────────────────
+ *
+ * This said the read was deliberately unmocked because "nothing in
+ * `@chatlychat/widget-react` or `@chatlychat/widget-element` reads
+ * `chatly:vr:*`", and seeding it would be a fixture that decides nothing.
+ * That stopped being true when the lazy triggers moved into the wrapper
+ * package: `hasStoredThread` runs here, so the seed is now the input the
+ * preload decision is actually made from, and the tests below set it.
+ *
+ * It also changed what a first-time visitor pays. Owner mode used to fetch
+ * `loader.js` at mount unconditionally; now the fetch waits for a trigger, so
+ * a first-time visitor's page load makes NO request to any Chatly host. The
+ * returning-chatter preload is unchanged and is what acceptance 1 pins — it
+ * just has to seed the thread to get it, which is a better test than the one
+ * it replaces: that one passed whether or not the branch existed.
  */
 import { __testing } from '@chatlychat/widget-element';
 import { act, fireEvent, render } from '@testing-library/react';
@@ -87,8 +98,42 @@ function button(container: HTMLElement): HTMLButtonElement {
   return el;
 }
 
+/**
+ * A working `localStorage`, optionally seeded with a thread for `publicId`.
+ *
+ * `window.localStorage` is `undefined` under this suite even though the config
+ * gives the document a real URL: jsdom 30 does not expose it through the
+ * key-copy vitest's jsdom environment performs. The loader's own harness
+ * carries the same stub for the same reason — see `installStore` in
+ * `apps/widget-loader/src/loader-harness.ts`.
+ *
+ * `chatly:vr:<publicId>` is the unread watermark, and its mere EXISTENCE is
+ * what `hasStoredThread` reads as "this browser has chatted here". The value
+ * is deliberately not a realistic payload: anything that looked like one would
+ * suggest the shape matters, and it does not.
+ */
+function installStore(seedThreadFor?: string): void {
+  const map = new Map<string, string>();
+  if (seedThreadFor !== undefined) {
+    map.set(`chatly:vr:${seedThreadFor}`, '{}');
+  }
+  for (const name of ['localStorage', 'sessionStorage']) {
+    vi.stubGlobal(name, {
+      getItem: (k: string) => map.get(k) ?? null,
+      setItem: (k: string, v: string) => void map.set(k, v),
+      removeItem: (k: string) => void map.delete(k),
+      clear: () => map.clear(),
+      key: (i: number) => [...map.keys()][i] ?? null,
+      get length() {
+        return map.size;
+      },
+    });
+  }
+}
+
 beforeEach(() => {
   vi.useFakeTimers();
+  installStore();
   __testing.reset();
   // No recording stand-in: the component installs the real queueing shim,
   // exactly as it does on a page where the loader has not arrived yet.
@@ -103,10 +148,15 @@ afterEach(() => {
   delete w.Chatly;
   vi.useRealTimers();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe('what owner mode asks the loader for (acceptance 1)', () => {
-  it('requests loader.js synchronously on mount, with the mode that preloads', () => {
+  it('requests loader.js synchronously on mount for a returning chatter', () => {
+    // The seed IS the feature. Without a stored thread this is a first-time
+    // visitor and the correct answer is no request at all — which is what the
+    // next block asserts.
+    installStore('acme-web');
     render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
 
     /*
@@ -122,14 +172,37 @@ describe('what owner mode asks the loader for (acceptance 1)', () => {
     expect(scripts[0]?.async).toBe(true);
 
     /*
-     * The three shim facts the loader's decision rests on. `lazy` is read at
-     * its script-evaluation time and `publicId` is the key `chatly:vr:*` is
-     * looked up under, so getting either wrong is a preload that silently
-     * never happens.
+     * The three shim facts the decision rests on. `publicId` is the key
+     * `chatly:vr:*` is looked up under, so getting it wrong is a preload that
+     * silently never happens — and now that the lookup runs in this package
+     * rather than in `loader.js`, this suite can see the consequence.
      */
-    expect(w.Chatly?.lazy).toBe('launcher');
     expect(w.Chatly?.publicId).toBe('acme-web');
     expect(queuedInitOptions()['theme']).toEqual({ hideLauncher: true });
+
+    /*
+     * `lazy` is CLEARED by the time the script goes in, and that is deliberate
+     * rather than a loss. `loader.js` reads it as its own script evaluates, so
+     * leaving it would arm a second set of triggers behind a decision this
+     * package has already made — in `'launcher'` mode drawing no placeholder
+     * (there is one already) and then waiting for a click the returning
+     * visitor never has to give. The mode it ASKED for is observable in the
+     * first-time case below, where nothing fired.
+     */
+    expect('lazy' in (w.Chatly ?? {})).toBe(false);
+  });
+
+  it('requests nothing at mount for a first-time visitor', () => {
+    /*
+     * The control for the test above: with no stored thread, the same mount
+     * makes no request. Without this, seeding storage would prove nothing —
+     * the old version of acceptance 1 passed whether or not the
+     * returning-chatter branch existed, because owner mode fetched the loader
+     * for everybody.
+     */
+    render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
+    expect(loaderScripts()).toHaveLength(0);
+    expect(w.Chatly?.lazy).toBe('launcher');
   });
 
   it('asks for a mode the loader preloads in, not the one that refuses', () => {
@@ -189,14 +262,19 @@ describe('what owner mode asks the loader for (acceptance 1)', () => {
   });
 });
 
-describe('a first-time visitor pays for nothing but the loader (acceptance 2)', () => {
-  it('queues no call that would fetch the bundle, until the button is used', () => {
+describe('a first-time visitor pays for nothing at all (acceptance 2)', () => {
+  it('requests nothing and queues nothing that would fetch the bundle', () => {
     render(<ChatlyLauncher publicId="acme-web">Chat</ChatlyLauncher>);
     act(() => void vi.advanceTimersByTime(1000));
 
-    // One script in the head — the loader — and nothing in the queue that the
-    // loader treats as "the visitor wants the chat".
-    expect(loaderScripts()).toHaveLength(1);
+    /*
+     * This block was titled "pays for nothing but the loader" and asserted
+     * ONE script in the head, because owner mode fetched `loader.js` at mount
+     * whatever `lazy` said. It is zero now: the triggers are in this package,
+     * so the decision is made before any request rather than inside the
+     * script that had to be fetched to make it.
+     */
+    expect(loaderScripts()).toHaveLength(0);
     expect(queuedMethods().filter((m) => WANTS_UI.includes(m))).toEqual([]);
   });
 

@@ -1,5 +1,9 @@
 # @chatlychat/widget-react — changelog
 
+## 0.18.0 — 2026-10-26
+
+Picks up `@chatlychat/widget-element` 0.20.0, and with it a privacy fix that applies to `<ChatlyWidget>` and `<ChatlyLauncher>`: with `lazy` set to anything but `'off'`, nothing is requested from any Chatly host until the visitor reaches for the chat. Previously every mode fetched `loader.js` on page load. See that package's changelog for why it needed a code move rather than a branch.
+
 ## 0.17.0 — 2026-10-26
 
 Picks up `@chatlychat/widget-element` 0.19.0. New prop `onNotice` for the bot's ephemeral notice: it receives `{ conversationId, replyTo, body }`.
