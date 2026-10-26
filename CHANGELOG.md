@@ -1,5 +1,9 @@
 # @chatlychat/widget-react — changelog
 
+## 0.17.0 — 2026-10-26
+
+Picks up `@chatlychat/widget-element` 0.19.0. New prop `onNotice` for the bot's ephemeral notice: it receives `{ conversationId, replyTo, body }`.
+
 ## 0.16.0 — 2026-10-26
 
 Picks up `@chatlychat/widget-element` 0.18.0. New prop `onNavigate` for the `navigate` card action: it receives `{ path, label, conversationId, messageId, actionId }` and is what stops the widget navigating by itself.
