@@ -428,3 +428,104 @@ describe('the CSP nonce', () => {
     expect(initOptions()['publicId']).toBe('acme-web');
   });
 });
+
+/**
+ * The CHT-SI17 props a design-system component composes over: `anchor`, the
+ * per-category `storage` object, and `consent` / `consentCategory`.
+ *
+ * The last two were recorded here as blocked on a consent manager's category
+ * registry. CHT-X02 (ADR 0071) shipped them on `ChatlyEmbedOptions` instead —
+ * `consent: 'auto'` reads the page's shared consent API, `support_chat` is the
+ * default category and any other is a raw string — and this component takes
+ * them through `Partial<ChatlyEmbedOptions>` like every other init key. What
+ * was missing was the evidence, which is the test below.
+ */
+describe('composing props (CHT-SI17)', () => {
+  it('folds a flat `anchor` into the theme, where init reads it', () => {
+    render(
+      <ChatlyLauncher publicId="acme-web" anchor="[data-bar]">
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => void vi.advanceTimersByTime(50));
+    expect(initOptions()['theme']).toMatchObject({ hideLauncher: true, anchor: '[data-bar]' });
+    /*
+     * And NOT at the top level. `init` ignores an unknown key in silence, so
+     * an `anchor` left outside `theme` is a prop that typechecks, passes
+     * through and does nothing — which is what happens if it falls out of
+     * `LOCAL_PROPS`.
+     */
+    expect(initOptions()).not.toHaveProperty('anchor');
+  });
+
+  it('lets the flat prop win over the theme object, and leaves the theme alone when absent', () => {
+    render(
+      <ChatlyLauncher publicId="acme-web" theme={{ anchor: '#from-theme' }} anchor="#flat">
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => void vi.advanceTimersByTime(50));
+    expect(initOptions()['theme']).toMatchObject({ anchor: '#flat' });
+
+    calls = [];
+    __testing.reset();
+    render(
+      <ChatlyLauncher publicId="acme-web" theme={{ anchor: '#from-theme' }}>
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => void vi.advanceTimersByTime(50));
+    // Not `undefined`: `exactOptionalPropertyTypes` is off here, so an
+    // unconditional `{ anchor: props.anchor }` would blank this.
+    expect(initOptions()['theme']).toMatchObject({ anchor: '#from-theme' });
+  });
+
+  /*
+   * The tracker recorded the per-category storage object as "still untyped"
+   * on this component. It is typed — `ChatlyEmbedOptions['storage']` carries
+   * the object form and `ChatlyLauncherProps` extends `Partial<>` of it — so
+   * what was missing was evidence. This is the evidence: the object compiles
+   * as a prop AND arrives in `init` with all three categories intact.
+   */
+  it('threads the per-category storage object through untouched', () => {
+    render(
+      <ChatlyLauncher
+        publicId="acme-web"
+        storage={{ functional: 'on-open', analytics: 'deny', marketing: 'deny' }}
+      >
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => void vi.advanceTimersByTime(50));
+    expect(initOptions()['storage']).toEqual({
+      functional: 'on-open',
+      analytics: 'deny',
+      marketing: 'deny',
+    });
+  });
+
+  /*
+   * Control: add `'consent'` to `LOCAL_PROPS` and this fails — the prop still
+   * typechecks and the loader, which reads `consent` off the queued `init`,
+   * never sees it.
+   */
+  it('passes consent and consentCategory to init, where the loader reads them', () => {
+    render(
+      <ChatlyLauncher publicId="acme-web" consent="auto" consentCategory="preferences">
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => void vi.advanceTimersByTime(50));
+    expect(initOptions()).toMatchObject({ consent: 'auto', consentCategory: 'preferences' });
+  });
+
+  it('still takes the string form, including the default mode', () => {
+    render(
+      <ChatlyLauncher publicId="acme-web" storage="deny">
+        Chat
+      </ChatlyLauncher>,
+    );
+    act(() => void vi.advanceTimersByTime(50));
+    expect(initOptions()['storage']).toBe('deny');
+  });
+});

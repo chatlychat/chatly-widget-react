@@ -73,7 +73,7 @@ itself has none.
 
 ## `<ChatlyWidget />`
 
-Every [init option](https://chatlychat.com/docs/channel-web) is a prop:
+Every [init option](https://chatlychat.com/guides/channel-web) is a prop:
 `publicId` (required), `apiUrl`, `realtimeUrl`, `visitor`, `theme`,
 `behavior`, `quickLinks`, `copy`, `copyByLocale`, `cssOverrides`.
 
@@ -110,9 +110,13 @@ This is the part worth knowing, because the three outcomes are different:
 | anything else           | `init()` again, which **destroys and re-mounts**.     |
 
 A re-mount loses nothing durable — the conversation lives on the server — but
-it closes an open panel. The widget has no `setTheme`, so there is no honest
-alternative; what this component guarantees is that it only happens when a
-value really changed, not when a parent re-rendered.
+it closes an open panel. What this component guarantees is that it only happens
+when a value really changed, not when a parent re-rendered.
+
+A changed `theme` is the one case with a better answer: `useChatly().setTheme()`
+repaints an open panel in place, with no re-mount and no network request. The
+prop still re-initialises, because it describes a whole theme and a merge
+cannot un-apply a key you removed.
 
 `loaderUrl` is the exception: changing it after load warns and does nothing,
 because the bundle is already fetched and pointing the running widget at

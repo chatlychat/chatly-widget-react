@@ -130,6 +130,37 @@ export interface ChatlyLauncherProps extends Partial<ChatlyEmbedOptions>, Chatly
   id?: string;
   /** Defaults to the button's own text, or "Open chat" for an icon-only button. */
   'aria-label'?: string;
+  /**
+   * A CSS selector the panel positions itself above (CHT-D11).
+   *
+   * ── Read this before reaching for it: you probably do not need it ───────
+   *
+   * Owner mode forces `theme.hideLauncher`, and with `hideLauncher` and no
+   * `panelOffsetY` the widget anchors the panel to whichever element called
+   * `open()` — which is THIS BUTTON, by construction. So the thing this prop
+   * is for already happens, and a `<ChatlyLauncher>` that sets nothing does
+   * not have the bug (CHT-B04) that the panel covers the button that opened
+   * it.
+   *
+   * What it is for is the case where the panel should clear something OTHER
+   * than this button: a sticky bar this button sits inside, a toolbar, a
+   * container whose height changes. Name that element instead.
+   *
+   * ── Why it is a prop of its own and not just `theme={{ anchor }}` ───────
+   *
+   * That spelling works and always did — `theme` is part of
+   * `ChatlyEmbedOptions`. This exists because the ask (CHT-SI17) is for a
+   * design-system component to compose over this one with flat props and no
+   * product logic of its own: `<SupportChatButton anchor="#bar" />` should
+   * not have to know that `anchor` lives inside `theme`. It MERGES into
+   * `theme`, so `theme={{ anchor: '#a' }}` and `anchor="#b"` do not fight —
+   * the flat prop wins, as the more specific statement.
+   *
+   * It is deliberately not `anchor={false}`: the opt-out is `panelOffsetY`,
+   * a number you measured, and "put the panel back on top of my button" is
+   * not a behaviour worth a flag.
+   */
+  anchor?: string;
 }
 
 /** Props that belong to this component rather than to the widget's `init`. */
@@ -144,6 +175,15 @@ const LOCAL_PROPS = [
   'disabled',
   'id',
   'aria-label',
+  /*
+   * `anchor` is LOCAL even though it ends up in the options, because it is
+   * not an `init` key: it belongs inside `theme`. Left out of this list the
+   * loop below would copy it to `options.anchor`, where `init` ignores an
+   * unknown key in silence — a prop that typechecks, passes through, and does
+   * nothing. That is this repo's most-repeated defect shape and it is one
+   * array entry away in either direction.
+   */
+  'anchor',
 ] as const;
 
 /**
@@ -211,7 +251,16 @@ function optionsFrom(props: ChatlyLauncherProps): ChatlyEmbedOptions {
     }
   }
   options['lazy'] = props.lazy ?? DEFAULT_OWNER_LAZY;
-  options['theme'] = { hideLauncher: true, ...props.theme };
+  options['theme'] = {
+    hideLauncher: true,
+    ...props.theme,
+    // Last, so the flat prop beats `theme={{ anchor }}` — and spread
+    // conditionally, so an absent `anchor` does not write `undefined` over a
+    // value the theme object set. `exactOptionalPropertyTypes` is off in this
+    // package, so `{ anchor: undefined }` typechecks and would silently blank
+    // the theme's own setting.
+    ...(props.anchor === undefined ? {} : { anchor: props.anchor }),
+  };
   return options as unknown as ChatlyEmbedOptions;
 }
 

@@ -1,5 +1,117 @@
 # @chatlychat/widget-react — changelog
 
+## 0.16.0 — 2026-10-26
+
+Picks up `@chatlychat/widget-element` 0.18.0. New prop `onNavigate` for the `navigate` card action: it receives `{ path, label, conversationId, messageId, actionId }` and is what stops the widget navigating by itself.
+
+## 0.15.2 — 2026-10-26
+
+Picks up `@chatlychat/widget-element` 0.17.0. **Behaviour change: visit telemetry is now opt-in.** The widget's own `visitor.*` events are held until analytics consent is granted, and opening the chat no longer grants it. New prop `analytics="grant"` for sites outside any consent regime.
+
+## 0.15.1 — 2026-10-25
+
+Pins `@chatlychat/widget-element` 0.16.2, which adds `setConsent` and CMP-neutral `consent: 'auto'`.
+
+## 0.15.0 — 2026-10-25
+
+- **`<ChatlyLauncher anchor="[data-bar]">`** — a flat prop, folded into
+  `theme.anchor`, for a design-system component composing over this one
+  (CHT-SI17). `theme={{ anchor }}` worked already; the flat prop exists so a
+  wrapper need not know which option object the field lives in, and it WINS
+  over the theme object as the more specific statement. An absent prop leaves
+  `theme.anchor` alone rather than blanking it.
+- **Most `<ChatlyLauncher>` users need neither.** Owner mode forces
+  `theme.hideLauncher`, and the widget now anchors the panel to whichever
+  element called `open()` — this button. Reach for `anchor` when the panel
+  should clear something else, such as a sticky bar the button sits in.
+- The per-category **`storage={{ functional, analytics, marketing }}`** object
+  is pinned by a test, in both directions: it compiles as a prop and arrives in
+  `init` with all three categories intact. It was already typed through
+  `Partial<ChatlyEmbedOptions>`; what was missing was evidence.
+- `consent` / `consentCategory` are still **not** implemented. They are blocked
+  on Cookie Munch's category registry and SuiteConsent v1.
+
+## 0.8.0 — 2026-10-19
+
+**This package's own source did not change.** `ChatlyWidgetProps extends
+ChatlyEmbedOptions` and `useChatly()` returns the element package's `controls`
+object, so everything 0.8.0 of `@chatlychat/widget-element` added arrives here
+by re-export. The release exists because `pnpm publish` rewrites
+`workspace:*` to an EXACT version at pack time, so this package's pin is what
+decides whether a React consumer can reach it at all — the same reason 0.7.0
+existed.
+
+What a React consumer gets:
+
+- **`useChatly().setTheme({ colorScheme: 'dark' })`** — repaint an open panel
+  with no re-mount and no network request. A changed `theme` PROP still
+  re-initialises; call the method for a light/dark switch and leave the prop
+  alone. Why the prop is not routed through it is in the element package's
+  entry.
+- **`visitor={{ getToken }}`** for an OIDC channel, and `visitor.userToken`
+  for the raw token. Prefer the provider: a token lives ~60 seconds and the
+  widget re-sends an identity on every `init`, so a string captured in a
+  render is dead by the next one. Nothing minted is ever stored.
+
+## 0.7.0 — 2026-10-19
+
+**This package's own source did not change. The release exists because its
+dependency pin is what decides whether `@chatlychat/widget-element@0.7.0`
+reaches a React consumer at all, and at 0.6.0 the answer was never.**
+
+`ChatlyWidgetProps extends ChatlyEmbedOptions`, so this package's public prop
+type IS the element package's option type — it is re-exported, not restated.
+But `pnpm publish` rewrites `workspace:*` to an **exact** version at pack time,
+and `@chatlychat/widget-react@0.6.0` therefore went to the registry carrying
+`"@chatlychat/widget-element": "0.6.0"`. A consumer on the React wrapper got
+that version pinned, and nothing they could do short of an override would move
+it. So the two things 0.7.0 of the element package added were, for React:
+
+- `identityFallback="anonymous"` — a type error on `<ChatlyWidget>`, even
+  though `optionsFrom` spreads every unknown prop straight into `init` and the
+  runtime would have honoured it.
+- `storage="on-open"` — a type error for **the widget's own new default**. The
+  union was `'allow' | 'deny'`, so the one mode that stores nothing until the
+  visitor asks for chat could not be written down in a React prop.
+
+### Changed
+
+- Requires `@chatlychat/widget-element@0.7.0` (exact, as always — see below).
+  Upgrading gives `identityFallback`, `storage: 'on-open'`, and the
+  `identity_rejected` / `identity_missing_hash` error codes on the existing
+  `onError` prop.
+
+### Changed behaviour you did not opt into
+
+**The widget's default storage mode is now `'on-open'`**, from the element
+package and the bundle underneath it rather than from anything here. An
+embed passing no `storage` prop writes nothing to the device and sends no
+visit telemetry until the visitor opens the panel. Pass `storage="allow"` for
+the old eager behaviour. Your own `track()` calls are never gated.
+
+### A note on the pin, since it is the reason this version exists
+
+The dependency stays `workspace:*` — an exact pin on the published artifact —
+deliberately, not by omission. `startWidget`'s refcounting and deferred
+teardown are module-level state, so two copies of `@chatlychat/widget-element`
+on one page are two independent lifecycles: the second consumer's `unmount`
+cannot see the first one's mount. An exact pin is what guarantees the wrapper
+and the element it was tested against are the same instance.
+
+The cost is that this package must be re-released for every element release,
+which is what 0.6.0 failed to do. It also means a consumer who depends on
+`@chatlychat/widget-element` directly must keep that range able to resolve to
+the same version this wrapper pins, or npm installs both and the refcount
+splits. Keep the two versions equal.
+
+## 0.6.0 — 2026-10-16
+
+### Added
+
+- An `onConversationChanged` prop on both components, and `setOffset` on
+  `controls`. Requires `@chatlychat/widget-element@0.6.0`; `react` is still a
+  **peer** dependency.
+
 ## 0.5.0 — 2026-10-16
 
 ### Changed
