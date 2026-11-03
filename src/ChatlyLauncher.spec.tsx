@@ -325,15 +325,38 @@ describe('owner mode — with a publicId', () => {
 });
 
 describe('a changed theme prop', () => {
-  it('repaints with setTheme instead of re-initialising', () => {
+  it('repaints with setTheme instead of re-initialising, removals included', () => {
     const { rerender } = render(
       <ChatlyWidget publicId="acme-web" theme={{ primaryColor: '#111111' }} />,
     );
     rerender(<ChatlyWidget publicId="acme-web" theme={{ primaryColor: '#222222' }} />);
     expect(argsFor('init')).toHaveLength(1);
     expect(argsFor('setTheme')).toEqual([[{ primaryColor: '#222222' }]]);
+
+    /*
+     * A REMOVED key is a repaint too, and this assertion used to say the
+     * opposite: it expected a second `init`. NPOL-2 (`bd6b92df`) changed
+     * `themeDelta` to carry a dropped key as an explicit `undefined`, because
+     * `resolveWidgetTheme` layers the override with `assignDefined` and so an
+     * `undefined` has always meant "I no longer set this" and falls through to
+     * the snippet, the profile and the channel config. The re-init was
+     * guarding a limit the widget did not have, and it threw away an open
+     * conversation for the most ordinary React code there is — a `theme`
+     * object recomputed on a state change that drops a key.
+     *
+     * This spec was last touched one commit BEFORE that change and has been
+     * red ever since, which nothing noticed because widget-react's suite had
+     * not run. Asserting the old behaviour kept the stale expectation alive.
+     *
+     * CONTROL: restore `removed: true` + the re-init arm in `themeDelta` and
+     * `init` goes to 2 while the third `setTheme` disappears.
+     */
     rerender(<ChatlyWidget publicId="acme-web" theme={{}} />);
-    expect(argsFor('init')).toHaveLength(2);
+    expect(argsFor('init')).toHaveLength(1);
+    expect(argsFor('setTheme')).toEqual([
+      [{ primaryColor: '#222222' }],
+      [{ primaryColor: undefined }],
+    ]);
   });
 });
 

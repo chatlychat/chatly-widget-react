@@ -1,5 +1,35 @@
 # @chatlychat/widget-react — changelog
 
+## 0.25.0 — 2026-11-03
+
+- Picks up `@chatlychat/widget-element` 0.27.0, which is where the fix an
+  integrator needs lives: `<ChatlyLauncher visitor={{ getToken }} />` now
+  identifies a visitor on a channel verifying against an identity provider,
+  and a re-created `getToken` arrow no longer re-identifies on every render.
+  No source change in this package.
+
+## 0.24.1 — 2026-10-30
+
+- Published with no changelog entry of its own, which is why
+  `check-sibling-peer-ranges` was red. Recorded here rather than invented: the
+  commit that set the version carried no package source change.
+
+## 0.24.0 — 2026-10-28
+
+Picks up `@chatlychat/widget-element` 0.26.0: `controls.setCart`, the basket
+half of the commerce surface.
+
+Nothing in this package's own source changed, and that is why the version
+moved anyway — it depends on `@chatlychat/widget-element` through
+`workspace:*`, which publishes as an EXACT version, so a React consumer cannot
+reach a new control until this package is republished against the element
+version that has it. That dependency edge is invisible to
+`check-unreleased-package-changes`, which reasons per package.
+
+### Note on these two versions
+
+0.23.0 and 0.24.0 were both in `package.json` with no entry here.
+
 ## 0.22.0 — 2026-10-26
 
 Picks up `@chatlychat/widget-element` 0.24.0: `theme.colorScheme: 'host'` (the
