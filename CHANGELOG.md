@@ -1,5 +1,15 @@
 # @chatlychat/widget-react — changelog
 
+## 0.25.1 — 2026-11-03
+
+- Picks up `@chatlychat/widget-element` 0.27.1, where this release's only
+  change lives: `visitor.getToken` may now be typed to answer `null`, so
+  `<ChatlyLauncher visitor={{ getToken }} />` takes an Atlas-shaped
+  `() => Promise<string | null>` with no cast. `ChatlyIdentity` is re-exported
+  from this package, and the dependency range is a caret, so a fresh install of
+  0.25.0 already resolves the new element; a tree with a lockfile does not.
+  This release is for that tree, and has no source change of its own.
+
 ## 0.25.0 — 2026-11-03
 
 - Picks up `@chatlychat/widget-element` 0.27.0, which is where the fix an
