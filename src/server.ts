@@ -150,3 +150,132 @@ function refuseInBrowser(): void {
       'to the client as visitor.userHash.',
   );
 }
+
+/**
+ * Who is signed in, as your own app already knows it.
+ *
+ * `email` and `name` are passed straight through to the widget, which uses
+ * them to pre-fill the composer and to name the contact in the agent inbox.
+ * Neither is verified by anything — only `externalId` is, through the hash —
+ * so they are a convenience and never an identity.
+ */
+export interface ChatlyIdentitySubject {
+  /** Your own stable id for this person. The value the hash is computed over. */
+  readonly externalId: string;
+  readonly email?: string;
+  readonly name?: string;
+}
+
+export interface ChatlyIdentityHandlerOptions {
+  /** The web channel's `config.identityVerification.secret`. Server-only. */
+  readonly secret: string;
+  /**
+   * Who is signed in on THIS request, or `null` for a signed-out visitor.
+   *
+   * It is handed the request so it can read your own cookie or header, and it
+   * may be async. Returning `null` is what signs the widget out; see the
+   * asymmetry note below for why nothing else does.
+   */
+  readonly session: (
+    request: Request,
+  ) => ChatlyIdentitySubject | null | Promise<ChatlyIdentitySubject | null>;
+}
+
+/**
+ * The identity route, as an import — 41 lines every customer was writing
+ * (EmojiDex XP-4, 2026-11-16).
+ *
+ * ═══ WHY THIS SHIPS AND THE REST OF THE LOOP DOES NOT ═════════════════════
+ *
+ * `chatlyUserHash` above is the hard part and has shipped for a while; the
+ * route AROUND it had not, so every integrator wrote the same handler. The
+ * one reviewed on 2026-11-16 was correct — and its reporter named the line
+ * that will be forgotten next time: `cache-control: no-store`. A cached
+ * identity answer served to the wrong visitor is the worst defect this
+ * feature can have, and it is one header away in a framework that caches
+ * route handlers by default. So it is set here, where nobody has to remember
+ * it.
+ *
+ *     // app/api/chatly/identity/route.ts
+ *     import { createIdentityHandler } from '@chatlychat/widget-react/server';
+ *     import { auth } from '@/lib/auth';
+ *
+ *     export const GET = createIdentityHandler({
+ *       secret: process.env.CHATLY_IDV_SECRET!,
+ *       session: async () => {
+ *         const user = await auth();
+ *         return user === null ? null : { externalId: user.id, name: user.name };
+ *       },
+ *     });
+ *
+ * Then point the widget at it: `<ChatlyLauncher identityEndpoint="/api/chatly/identity">`.
+ *
+ * ═══ A WEB HANDLER, NOT A NEXT ONE ════════════════════════════════════════
+ *
+ * `(request: Request) => Promise<Response>` is the whole signature, which is
+ * what a Next App Router route handler IS — and also a Remix loader, a Hono
+ * handler, a Bun or Deno server, and a Cloudflare Worker. A Next-shaped
+ * helper would need `next/server` as a dependency of a package whose only
+ * dependency is `@chatlychat/widget-element`, to gain nothing: `NextResponse`
+ * extends `Response`. Nothing here imports a framework.
+ *
+ * Express is the one common server this does NOT drop into, because its
+ * `req`/`res` are not these. That is said rather than papered over with an
+ * adapter nobody asked for.
+ *
+ * ═══ THE ENVELOPE IS THE CONTRACT ═════════════════════════════════════════
+ *
+ * `{ identity: {…} | null }`, which is what `identityEndpoint` in
+ * `@chatlychat/widget-element` parses — see `identity-loop.ts` for why it is
+ * an envelope rather than a bare object, and for the rule that makes this
+ * safe to deploy: **only an explicit `null` signs the visitor out.** A route
+ * that is briefly down answers neither shape, and the loop then changes
+ * nothing rather than resetting every signed-in visitor's session at once.
+ * This handler therefore answers `{ identity: null }` ONLY when `session`
+ * said so, and lets an error from `session` propagate as the framework's own
+ * 500 — which is the honest signal, and the one the loop ignores.
+ *
+ * @throws at CREATION time if the secret is empty or this runs in a browser,
+ * so a missing env var fails at boot rather than per request. An empty secret
+ * produces a digest every attacker can also compute.
+ */
+export function createIdentityHandler(
+  options: ChatlyIdentityHandlerOptions,
+): (request: Request) => Promise<Response> {
+  /*
+   * Both checks HERE, not inside the handler. `chatlyUserHash` would refuse
+   * an empty secret on the first signed-in visitor, which is a 500 in
+   * production for a mistake visible at boot — and a signed-OUT visitor would
+   * never reach it, so the route would look healthy under a smoke test that
+   * does not sign in.
+   */
+  refuseInBrowser();
+  if (options.secret.length === 0) {
+    throw new Error(
+      'createIdentityHandler: secret is empty. Pass the channel’s ' +
+        'config.identityVerification.secret — an empty secret produces a hash anyone can ' +
+        'compute, so identity verification would be worse than off.',
+    );
+  }
+  return async (request: Request): Promise<Response> => {
+    const subject = await options.session(request);
+    const identity =
+      subject === null
+        ? null
+        : {
+            externalId: subject.externalId,
+            ...(subject.email === undefined ? {} : { email: subject.email }),
+            ...(subject.name === undefined ? {} : { name: subject.name }),
+            userHash: chatlyUserHash(options.secret, subject.externalId),
+          };
+    return new Response(JSON.stringify({ identity }), {
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        // The line this helper exists for. An identity answer is per-visitor
+        // and must never be stored by a browser, a CDN or a framework's own
+        // route cache.
+        'cache-control': 'no-store',
+      },
+    });
+  };
+}

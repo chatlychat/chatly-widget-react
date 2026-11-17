@@ -34,8 +34,11 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { chatlyUserHash as browserStub } from './server-browser.js';
-import { chatlyUserHash } from './server.js';
+import {
+  chatlyUserHash as browserStub,
+  createIdentityHandler as browserHandler,
+} from './server-browser.js';
+import { chatlyUserHash, createIdentityHandler } from './server.js';
 
 /**
  * `verifyIdentityHash` from `apps/api/src/modules/widget/security.ts`,
@@ -158,5 +161,99 @@ describe('the browser stub the exports map points at', () => {
     // `scripts/check-esm-linkable.mjs`, where an import-time throw would fail
     // the build for a reason that has nothing to do with the bug.
     expect(browserStub).toBeDefined();
+  });
+});
+
+/**
+ * The identity ROUTE (XP-4, EmojiDex 2026-11-16).
+ *
+ * Every assertion here was control-tested by breaking the thing it names and
+ * watching this file fail: `no-store` deleted, `{ identity: null }` returned
+ * for a signed-in visitor, the hash computed over the email instead of the
+ * id, and the empty-secret guard moved inside the returned handler.
+ */
+describe('createIdentityHandler', () => {
+  const SECRET = 'idv-secret-value';
+  const req = (): Request => new Request('https://shop.example/api/chatly/identity');
+
+  it('answers the envelope `identityEndpoint` parses, with the server’s own hash', async () => {
+    const handler = createIdentityHandler({
+      secret: SECRET,
+      session: () => ({ externalId: 'user-1', email: 'ada@acme.test', name: 'Ada' }),
+    });
+    const res = await handler(req());
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { identity: Record<string, unknown> | null };
+    expect(body.identity).toEqual({
+      externalId: 'user-1',
+      email: 'ada@acme.test',
+      name: 'Ada',
+      // The VERIFIER's construction, through the same helper this file already
+      // pins against the API and against `@chatlychat/sdk-node`.
+      userHash: chatlyUserHash(SECRET, 'user-1'),
+    });
+    // The hash is over the id and nothing else — not the email, which is a
+    // convenience field the API verifies nothing about.
+    expect(body.identity?.['userHash']).not.toBe(chatlyUserHash(SECRET, 'ada@acme.test'));
+  });
+
+  it('sets no-store, which is the line this helper exists for', async () => {
+    const handler = createIdentityHandler({ secret: SECRET, session: () => null });
+    const res = await handler(req());
+    expect(res.headers.get('cache-control')).toBe('no-store');
+    expect(res.headers.get('content-type')).toMatch(/application\/json/);
+  });
+
+  it('answers `identity: null` for a signed-out visitor, and only then', async () => {
+    // `null` is the one value that signs the widget out (`identity-loop.ts`),
+    // so it must be reachable — and must not be what an error looks like.
+    const out = await createIdentityHandler({ secret: SECRET, session: () => null })(req());
+    expect(await out.json()).toEqual({ identity: null });
+  });
+
+  it('lets an error from `session` propagate rather than signing everyone out', async () => {
+    /*
+     * The asymmetry from `identity-loop.ts`: a route that is briefly down
+     * must not reset every signed-in visitor's session. Swallowing this into
+     * `{ identity: null }` would do exactly that, site-wide, on one bad
+     * deploy of the consumer's auth.
+     */
+    const handler = createIdentityHandler({
+      secret: SECRET,
+      session: () => Promise.reject(new Error('session store down')),
+    });
+    await expect(handler(req())).rejects.toThrow(/session store down/);
+  });
+
+  it('reads the request, so a cookie or header can be inspected', async () => {
+    const seen: string[] = [];
+    const handler = createIdentityHandler({
+      secret: SECRET,
+      session: (request) => {
+        seen.push(request.headers.get('cookie') ?? '');
+        return null;
+      },
+    });
+    await handler(
+      new Request('https://shop.example/api/chatly/identity', { headers: { cookie: 'sid=abc' } }),
+    );
+    expect(seen).toEqual(['sid=abc']);
+  });
+
+  it('refuses an empty secret at CREATION, not on the first signed-in visitor', () => {
+    // A signed-OUT visitor never reaches the hash, so a guard inside the
+    // handler would let a smoke test that does not sign in report a healthy
+    // route and 500 in production later.
+    expect(() => createIdentityHandler({ secret: '', session: () => null })).toThrow(
+      /secret is empty/,
+    );
+  });
+
+  it('has a browser stub that throws at creation, naming the threat', () => {
+    expect(typeof browserHandler).toBe('function');
+    expect(() => browserHandler({ secret: 'shh', session: () => null })).toThrow(
+      /bundled for the browser/,
+    );
+    expect(() => browserHandler({ secret: 'shh', session: () => null })).toThrow(/impersonate/);
   });
 });

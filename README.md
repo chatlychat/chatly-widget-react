@@ -433,6 +433,39 @@ const userHash = chatlyUserHash(process.env.CHATLY_IDV_SECRET!, user.id);
 Then pass the hash — and only the hash — to the client as
 `visitor={{ externalId: user.id, userHash }}`.
 
+### Or the whole route handler: `createIdentityHandler`
+
+If your widget identifies visitors through `identityEndpoint`, the route you
+have to write around that hash is the same ~40 lines for everybody. Write the
+session lookup and nothing else:
+
+```ts
+// app/api/chatly/identity/route.ts
+import { createIdentityHandler } from '@chatlychat/widget-react/server';
+
+export const GET = createIdentityHandler({
+  secret: process.env.CHATLY_IDV_SECRET!,
+  session: async (request) => {
+    const user = await getUser(request);
+    // `null` SIGNS THE VISITOR OUT. An absent key does not.
+    return user === null ? null : { externalId: user.id, email: user.email };
+  },
+});
+```
+
+It returns a `(request: Request) => Promise<Response>`, so it fits a Next App
+Router route handler, a Remix loader, Hono, Bun or anything else serving web
+`Request`s. Three details it owns, each one reported by somebody who had to
+find it the hard way:
+
+- **`cache-control: no-store`.** A cached identity answer served to the next
+  visitor is the worst bug this feature has.
+- **`{ identity: null }` for a signed-out visitor** — the only value that
+  signs one out. Omitting the key means "no opinion", and the widget keeps the
+  session it has.
+- **The `externalId` is hashed, never the email.** The hash is over the id
+  alone, so a visitor changing their address does not become a stranger.
+
 **The secret must never reach a browser.** Anything that can compute this
 hash can impersonate any of your users to the widget, so a secret in your
 bundle makes identity verification worse than useless: the dashboard still

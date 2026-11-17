@@ -1,5 +1,40 @@
 # @chatlychat/widget-react — changelog
 
+## 0.26.0 — 2026-11-16
+
+- **`createIdentityHandler({ secret, session })`** — the identity route, from
+  `@chatlychat/widget-react/server` (EmojiDex XP-4). Every customer with
+  signed-in users was writing the same ~40 lines: read your own session, shape
+  `{ identity }`, compute the `userHash`, and remember
+  `cache-control: no-store`. You now write the session lookup and nothing
+  else.
+
+  ```ts
+  // app/api/chatly/identity/route.ts
+  import { createIdentityHandler } from '@chatlychat/widget-react/server';
+
+  export const GET = createIdentityHandler({
+    secret: process.env.CHATLY_IDV_SECRET!,
+    session: async (request) => {
+      const user = await getUser(request);
+      return user === null ? null : { externalId: user.id, email: user.email };
+    },
+  });
+  ```
+
+  Three details it owns, each one reported by somebody who had to find it:
+  `cache-control: no-store`, because a cached identity answer served to the
+  wrong visitor is the worst bug this feature has; returning
+  `{ identity: null }` for a signed-out visitor, which is the only value that
+  signs one out (an absent key does not); and hashing the `externalId` and
+  never the email.
+
+  It is server-only and says so loudly. The `/server` subpath keeps its
+  `browser` condition, so a bundler that pulls this into a client component
+  gets a module that **throws at creation** naming the threat, rather than
+  your identity secret in a bundle. An empty `secret` is refused at creation
+  too, since the alternative is a hash every visitor can forge.
+
 ## 0.25.1 — 2026-11-03
 
 - Picks up `@chatlychat/widget-element` 0.27.1, where this release's only

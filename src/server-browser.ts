@@ -20,6 +20,8 @@
  * never runs breaks the page anyway. See the longer note in `server.ts`.
  */
 
+import type { ChatlyIdentityHandlerOptions } from './server.js';
+
 /**
  * The browser stand-in. Always throws — see this file's header and the threat
  * model in `server.ts`.
@@ -48,3 +50,36 @@ function refuseInBrowser(_secret: string, _externalId: string): never {
  * and resolves in a browser build — and then refuses at call time.
  */
 export const chatlyUserHash: (secret: string, externalId: string) => string = refuseInBrowser;
+
+/**
+ * The identity ROUTE's browser stand-in (XP-4).
+ *
+ * It refuses at CREATION rather than per request, which is the opposite
+ * choice from the import-time note above and the same one `server.ts` makes:
+ * this function is called at module scope in a route file
+ * (`export const GET = createIdentityHandler({…})`), so a creation-time
+ * throw IS the loud failure, and it happens in the one place the mistake was
+ * made. Returning a handler that throws later would ship a route answering
+ * 500 to every visitor with the real cause three frames away.
+ */
+export const createIdentityHandler: (
+  options: ChatlyIdentityHandlerOptions,
+) => (request: Request) => Promise<Response> = () => {
+  throw new Error(
+    'createIdentityHandler: @chatlychat/widget-react/server was bundled for the browser. It ' +
+      "can't run there, and it must not: it holds the identity-verification secret, and " +
+      'anything that can compute these hashes can impersonate any of your users to the ' +
+      'widget. A route handler belongs in server code — app/api/*/route.ts, a Remix loader, ' +
+      'an Express endpoint — never in a component.',
+  );
+};
+
+/*
+ * TYPE-ONLY, so nothing from `server.ts` — and therefore nothing from
+ * `node:crypto` — can reach a browser bundle through this edge. It is erased
+ * at compile time. Re-exported so the two files present the same surface:
+ * a consumer's types always resolve to `server.d.ts` (the `types` condition
+ * is unconditional in the exports map), and a signature that drifted here
+ * would still be a lie a reader of this file could believe.
+ */
+export type { ChatlyIdentityHandlerOptions, ChatlyIdentitySubject } from './server.js';
