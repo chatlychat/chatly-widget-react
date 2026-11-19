@@ -64,3 +64,25 @@ export function forwardersTo(latest: { current: ChatlyEmbedHandlers }): ChatlyEm
   }
   return forwarders as ChatlyEmbedHandlers;
 }
+
+/**
+ * Every optional property also accepts an explicit `undefined`.
+ *
+ * ── Why this exists, and why `?:` alone was not enough ───────────────────
+ *
+ * Under `exactOptionalPropertyTypes` — which this repo does NOT set and two
+ * integrators do — `className?: string` and `className: string | undefined`
+ * are different types, and only the second accepts a value passed through
+ * from a wrapper's own optional prop. So a host component with
+ * `className?: string` could not forward it, and the workaround is
+ * `{...(className ? { className } : {})}` at every call site: snapnedit
+ * wrote it twice and pdfofile twice more, for one prop each.
+ *
+ * Homomorphic, so it keeps the `?` and only widens the value — and applied
+ * to `Partial<ChatlyEmbedOptions>` because `Partial` has the same problem
+ * for all 40-odd embed options, not just the four props written out below.
+ *
+ * It costs a non-strict consumer nothing: without the flag the two types are
+ * already identical.
+ */
+export type Loose<T> = { [K in keyof T]: T[K] | undefined };

@@ -55,11 +55,11 @@ export interface ChatlyWidgetProps extends ChatlyEmbedOptions, ChatlyEmbedHandle
    * `className` or `style`; it has a 420px minimum so a container with none
    * is still usable.
    */
-  inline?: boolean;
+  inline?: boolean | undefined;
   /** Only meaningful with `inline`. */
-  className?: string;
+  className?: string | undefined;
   /** Only meaningful with `inline`. */
-  style?: CSSProperties;
+  style?: CSSProperties | undefined;
 }
 
 /**

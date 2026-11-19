@@ -1,5 +1,17 @@
 # @chatlychat/widget-react — changelog
 
+## 0.27.0 — 2026-11-19
+
+- **Optional props accept `undefined` under `exactOptionalPropertyTypes`**
+  (snapnedit CHT-B6). `<ChatlyWidget className={maybeUndefined} />` and
+  `<ChatlyLauncher onClick={maybeHandler} />` typecheck now; previously they
+  needed `{...(x ? { x } : {})}`. See `@chatlychat/widget-element@0.28.0` for
+  the reasoning — the handler types are inherited from there, and the embed
+  options are widened here through a `Loose<T>` mapped type that preserves `?`
+  while widening the value.
+
+  Non-breaking: every previously valid assignment still typechecks.
+
 ## 0.26.0 — 2026-11-16
 
 - **`createIdentityHandler({ secret, session })`** — the identity route, from

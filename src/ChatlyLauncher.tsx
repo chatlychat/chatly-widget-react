@@ -70,7 +70,7 @@
 import { controls, prefetchWidget, startWidget } from '@chatlychat/widget-element';
 import { useEffect, useRef } from 'react';
 
-import { forwardersTo, handlersFrom, HANDLER_PROPS } from './handlers.js';
+import { forwardersTo, handlersFrom, HANDLER_PROPS, type Loose } from './handlers.js';
 
 import type {
   ChatlyEmbedHandle,
@@ -80,7 +80,9 @@ import type {
 } from '@chatlychat/widget-element';
 import type { CSSProperties, MouseEvent, ReactElement, ReactNode } from 'react';
 
-export interface ChatlyLauncherProps extends Partial<ChatlyEmbedOptions>, ChatlyEmbedHandlers {
+export interface ChatlyLauncherProps
+  extends Loose<Partial<ChatlyEmbedOptions>>,
+    ChatlyEmbedHandlers {
   /**
    * What goes inside the button. A string, an icon, whatever you render.
    *
@@ -88,13 +90,13 @@ export interface ChatlyLauncherProps extends Partial<ChatlyEmbedOptions>, Chatly
    * with no label is a launcher nobody clicks and an empty `<button>` is an
    * accessibility failure rather than a styling choice.
    */
-  children?: ReactNode;
+  children?: ReactNode | undefined;
   /** Shorthand for a text-only button. Ignored when `children` is given. */
-  label?: string;
-  className?: string;
-  style?: CSSProperties;
+  label?: string | undefined;
+  className?: string | undefined;
+  style?: CSSProperties | undefined;
   /** Which tab the panel opens on. */
-  openTab?: 'home' | 'messages' | 'help';
+  openTab?: 'home' | 'messages' | 'help' | undefined;
   /**
    * When the bundle is fetched, in OWNER mode. Ignored in control mode,
    * where another component already owns the widget.
@@ -112,7 +114,7 @@ export interface ChatlyLauncherProps extends Partial<ChatlyEmbedOptions>, Chatly
    * painted until something calls `Chatly('load')`, not even for a returning
    * chatter. See `DEFAULT_OWNER_LAZY` for why that is not the default.
    */
-  lazy?: ChatlyLazyMode;
+  lazy?: ChatlyLazyMode | undefined;
   /**
    * Start the download on hover and focus, so the click that follows finds
    * the bundle in cache. On by default.
@@ -123,13 +125,13 @@ export interface ChatlyLauncherProps extends Partial<ChatlyEmbedOptions>, Chatly
    * click-triggered — on a page where the button is large or near the
    * pointer's resting place, hover is not much of a signal.
    */
-  prefetchOnHover?: boolean;
+  prefetchOnHover?: boolean | undefined;
   /** Runs before the widget is asked to open. Call `preventDefault()` to stop it. */
-  onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
-  disabled?: boolean;
-  id?: string;
+  onClick?: ((event: MouseEvent<HTMLButtonElement>) => void) | undefined;
+  disabled?: boolean | undefined;
+  id?: string | undefined;
   /** Defaults to the button's own text, or "Open chat" for an icon-only button. */
-  'aria-label'?: string;
+  'aria-label'?: string | undefined;
   /**
    * A CSS selector the panel positions itself above (CHT-D11).
    *
@@ -160,7 +162,7 @@ export interface ChatlyLauncherProps extends Partial<ChatlyEmbedOptions>, Chatly
    * a number you measured, and "put the panel back on top of my button" is
    * not a behaviour worth a flag.
    */
-  anchor?: string;
+  anchor?: string | undefined;
 }
 
 /** Props that belong to this component rather than to the widget's `init`. */

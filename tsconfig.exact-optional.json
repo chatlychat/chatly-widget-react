@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "exactOptionalPropertyTypes": true,
+    "noEmit": true,
+    "rootDir": ".",
+    "types": ["react", "node"]
+  },
+  "include": ["exact-optional.fixture.tsx"]
+}
