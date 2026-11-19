@@ -1,5 +1,26 @@
 # @chatlychat/widget-react — changelog
 
+## 0.27.1 — 2026-11-19
+
+- **0.27.0's `exactOptionalPropertyTypes` fix only reached four props.**
+  `<ChatlyWidget>` extended `ChatlyEmbedOptions` raw, so the four props it
+  declares itself (`inline`, `className`, `style`, and the handlers) accepted
+  a forwarded `undefined` and the **24 inherited embed options did not** —
+  which is every option a host actually forwards: `identityEndpoint`,
+  `locale`, `theme`, `behavior`, `copy` and the rest. Fixed with a
+  `LooseOptions` type that widens the inherited options and leaves `publicId`
+  required.
+
+  `<ChatlyLauncher>` was already correct and is unchanged: it uses
+  `Loose<Partial<…>>` deliberately, because an absent `publicId` is its
+  owner/companion switch.
+
+  **Why the gate agreed:** its fixture forwarded `className` and stopped
+  there, so it exercised only the props named in the fix. It now forwards an
+  inherited option on both components and pins `publicId` required on the
+  widget and optional on the launcher, and control-fails against the exact
+  shape 0.27.0 shipped.
+
 ## 0.27.0 — 2026-11-19
 
 - **Optional props accept `undefined` under `exactOptionalPropertyTypes`**

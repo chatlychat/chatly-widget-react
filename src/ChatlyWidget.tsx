@@ -39,11 +39,17 @@ import {
 } from '@chatlychat/widget-element';
 import { useEffect, useRef } from 'react';
 
-import { forwardersTo, handlersFrom, HANDLER_PROPS } from './handlers.js';
+import { forwardersTo, handlersFrom, HANDLER_PROPS, type LooseOptions } from './handlers.js';
 
 import type { CSSProperties, ReactElement } from 'react';
 
-export interface ChatlyWidgetProps extends ChatlyEmbedOptions, ChatlyEmbedHandlers {
+export interface ChatlyWidgetProps extends LooseOptions, ChatlyEmbedHandlers {
+  /**
+   * The channel. Re-declared rather than inherited, because `LooseOptions`
+   * omits it: widening it would let `publicId={undefined}` typecheck, which
+   * is the regression `ChatlyLauncher` shipped in 0.27.0.
+   */
+  publicId: string;
   /**
    * Render the chat INSIDE this component's own box instead of floating it in
    * the page corner.

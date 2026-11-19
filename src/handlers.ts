@@ -20,7 +20,11 @@
  * `ChatlyEmbedHandlers`, which `ChatlyWidgetProps` and `ChatlyLauncherProps`
  * both extend, so `onMessage={(m) => m.conversationId}` is still checked.
  */
-import { EVENT_HANDLERS, type ChatlyEmbedHandlers } from '@chatlychat/widget-element';
+import {
+  EVENT_HANDLERS,
+  type ChatlyEmbedHandlers,
+  type ChatlyEmbedOptions,
+} from '@chatlychat/widget-element';
 
 /**
  * Every handler prop, in the widget's event order.
@@ -78,11 +82,39 @@ export function forwardersTo(latest: { current: ChatlyEmbedHandlers }): ChatlyEm
  * `{...(className ? { className } : {})}` at every call site: snapnedit
  * wrote it twice and pdfofile twice more, for one prop each.
  *
- * Homomorphic, so it keeps the `?` and only widens the value — and applied
- * to `Partial<ChatlyEmbedOptions>` because `Partial` has the same problem
- * for all 40-odd embed options, not just the four props written out below.
+ * Homomorphic, so it keeps the `?` and only widens the value. Apply it to
+ * the INHERITED options, not just the handful of props a component writes
+ * out by hand: `ChatlyEmbedOptions` carries 24 of them and a host forwards
+ * those too.
  *
  * It costs a non-strict consumer nothing: without the flag the two types are
  * already identical.
+ *
+ * ── Two components, two shapes, and the difference is load-bearing ──────
+ *
+ * `LooseOptions` omits `publicId` and `ChatlyWidget` re-declares it, because
+ * widening the one REQUIRED member of the 25 would let
+ * `publicId={undefined}` typecheck on a component that cannot start without
+ * a channel. `Partial` would do the same thing by making it absent-able.
+ *
+ * `ChatlyLauncher` uses `Loose<Partial<…>>` on purpose, and that is not the
+ * same mistake: an absent `publicId` is its owner/companion SWITCH — with one
+ * it starts a widget, without one it toggles a widget something else
+ * started. Making it required there would delete a documented mode and break
+ * six of its own specs.
+ *
+ * ── What 0.27.0 got wrong, and why its gate agreed ──────────────────────
+ *
+ * `ChatlyWidget` extended `ChatlyEmbedOptions` RAW, so the four props it
+ * writes out by hand accepted `undefined` and the 24 inherited ones did not
+ * — which is most of the bug the release claimed to fix, still live for every
+ * option an integrator actually forwards. The fixture behind
+ * `check-widget-react-exact-optional` forwarded `className` and stopped
+ * there, so it exercised only the props named in the fix and passed. It now
+ * forwards an inherited option on both components, and pins `publicId`
+ * required on one and optional on the other.
  */
 export type Loose<T> = { [K in keyof T]: T[K] | undefined };
+
+/** `ChatlyEmbedOptions` with every optional member widened, `publicId` intact. */
+export type LooseOptions = Loose<Omit<ChatlyEmbedOptions, 'publicId'>>;
